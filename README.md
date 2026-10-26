@@ -85,6 +85,12 @@ Result or explicit refusal / clarification + request ID
 
 **Jev-first, not Jev-locked:** [TypeSafe.ai's Jev](https://typesafe.ai/) is the proposed initial semantic selection adapter. It is a separate hosted, proprietary inference service requiring a TypeSafe API key. UtterRoute itself is MIT-licensed, and the gateway architecture is intended to support other routing backends later. We do **not** assume Jev can synthesize arbitrary JSON arguments or verify API-side effects.
 
+## Related projects and interoperability
+
+[SystemOne by codesoda](https://github.com/codesoda/systemone) is an independent MIT-licensed **decision-model runtime**, not a natural-language API executor. It exposes a Jev-compatible `POST /v1/systemone` interface for typed Choice/Noul/Score decisions and supports both hosted Jev and alternative local/hosted backends. UtterRoute's distinct responsibilities are OpenAPI ingestion, safe operation/argument compilation, policy, and upstream execution.
+
+Its [documented wire subset](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json) and [backend/runtime documentation](https://github.com/codesoda/systemone#about-the-project) are useful reference material for a future optional inference adapter and comparison tests. **No SystemOne dependency or compatibility is implemented in UtterRoute v0.1 yet.** Model predictions, calibration, limits and licensing for downloaded weights vary by backend; a Jev-compatible API does **not** mean model equivalence or locally hosted TypeSafe Jev weights. See [SPEC.md](docs/SPEC.md#optional-systemone-interoperability-reference) for proposed integration constraints. UtterRoute is not affiliated with or endorsed by SystemOne or TypeSafe.
+
 ## v0.1 goals
 
 - Import **local OpenAPI 3.x** descriptions and expose only explicitly allowed GET operations.
@@ -105,6 +111,7 @@ v0.1 is intended for **local development and controlled evaluation**, not an int
 
 - **[Product requirements — v0.1](docs/PRD.md):** Audience, problems, scope, user stories, release criteria and risks.
 - **[Technical specification — v0.1](docs/SPEC.md):** Proposed architecture, request/response contracts, importer constraints, policy, security and testing.
+- **[Reusable SystemOne patterns](docs/SYSTEMONE_PATTERNS.md):** Upstream architecture references, practical reuse map, compatibility limits, tests, and deferred integration.
 
 The docs are proposals open for review. Examples above describe intended interfaces, not currently working APIs.
 

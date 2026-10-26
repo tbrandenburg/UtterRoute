@@ -225,6 +225,36 @@ Non-success payloads use `status: rejected`, `needs_clarification`, or `failed`,
 
 Thresholds should be selected from evaluation data, not hardcoded as a universal guarantee. Evaluate sensitivity to candidate ordering, phrasing, and schema-description changes. Model scoring does not replace checking the final operation and arguments.
 
+### Optional SystemOne interoperability (reference)
+
+[SystemOne](https://github.com/codesoda/systemone) provides an independent, MIT-licensed Jev-compatible decision server across multiple local/hosted backends. For a **future optional adapter**, UtterRoute could call its `POST /v1/systemone` over HTTP using the [published compatible wire schema](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json). SystemOne is **not** an API/tool executor; OpenAPI operation filtering, parameter validation, destination policy and upstream execution remain inside UtterRoute.
+
+### Reusable upstream patterns for implementation
+
+SystemOne's design provides several patterns we can adapt **without adding SystemOne as a dependency**:
+
+| Pattern to reuse | How it maps to UtterRoute | Upstream source |
+| --- | --- | --- |
+| Typed provider-neutral decision contract | Keep `Router` adapters replaceable; return only eligible operation IDs or abstain | [DecisionHost](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/host.rs) |
+| Capability-declared inference limits | Check primitives, candidate count, model identity and score semantics before routing | [Capabilities](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/capabilities.rs) |
+| Strict Jev-compatible wire contracts | Validate selection responses and reject unknown operation IDs | [Wire schema](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json) |
+| Bounded, fail-closed service and transport | Use explicit timeouts/admission, fixed origins, no redirects, no silent retries | [Registry](https://github.com/codesoda/systemone/blob/main/crates/systemone-http/src/registry.rs) · [Remote transport](https://github.com/codesoda/systemone/blob/main/crates/systemone-remote/src/transport.rs) |
+| Compatibility tests **versus** decision quality | Test model API conformance separately from operation/argument correctness and abstention | [SDK smoke](https://github.com/codesoda/systemone/blob/main/compat/sdk-js/smoke.mjs) · [Evaluation](https://github.com/codesoda/systemone/blob/main/docs/gliner2-evaluation.md) |
+
+See [Reusable SystemOne patterns](SYSTEMONE_PATTERNS.md) for verified source links, an illustrative Choice request, implementation priorities, security boundaries, and acceptance tests. This is a **design reference**, not an assertion that UtterRoute or its Jev adapter currently supports SystemOne.
+
+Design considerations if that adapter is implemented:
+
+- Keep a single internal `Router` interface. Map allowed operation IDs and human-readable descriptions to a `choice` question, with an explicit no-match candidate. Parse the selected ID only; never accept generated target URLs or authorization data.
+- The documented SystemOne Choice subset accepts **at most 16 options per question**. Preserve one for `none_of_the_above`, leaving at most 15 operation candidates. If a catalog is larger, add evaluated deterministic preselection or refuse routing; **do not silently drop eligible operations**. Candidate narrowing remains outside the v0.1 P0 scope.
+- Send state as compact plain text where possible; its local OpenJev backend rejects floating-point JSON state, while other backends may accept it. Do not assume the wire subset matches every TypeSafe input.
+- Run SystemOne as a separately configured process/service (for example port 8090 to avoid UtterRoute's proposed 8080); require an explicit trusted base URL and enforce network policy. Default loopback is suitable for development, not public unauthenticated deployment.
+- Model/backends have different prediction quality, semantics, accuracy and calibration. A Jev-compatible response is **not** evidence of identical decisions. Configure the runtime/backend explicitly, pin tested versions, log sanitized backend identity, and **never** silently fall back from local inference to a hosted provider.
+- Its local backends use separate model weights with independent license terms. SystemOne's MIT license covers its project code, not downloaded weights or hosted inference services.
+- Add contract tests against [the published HTTP schema](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json), plus UtterRoute end-to-end tests for abstention and no-upstream-call behavior. Benchmark candidate counts, accuracy, refusal rate, latency and cost against direct hosted Jev before selecting a default.
+
+**v0.1 decision:** Reference and evaluate SystemOne, but do not add it as a required dependency, claim support for it, or expand the current Jev-first single-operation GET release scope. Revisit it after the baseline direct Jev adapter and evaluation harness work.
+
 ## 7. Argument extraction and validation
 
 The minimal supported resolution strategy is deliberately conservative:
