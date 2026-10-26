@@ -111,6 +111,7 @@ v0.1 is intended for **local development and controlled evaluation**, not an int
 
 - **[Product requirements — v0.1](docs/PRD.md):** Audience, problems, scope, user stories, release criteria and risks.
 - **[Technical specification — v0.1](docs/SPEC.md):** Proposed architecture, request/response contracts, importer constraints, policy, security and testing.
+- **[Reusable SystemOne patterns](docs/SYSTEMONE_PATTERNS.md):** Upstream architecture references, practical reuse map, compatibility limits, tests, and deferred integration.
 
 The docs are proposals open for review. Examples above describe intended interfaces, not currently working APIs.
 
