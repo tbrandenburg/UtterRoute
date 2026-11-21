@@ -2,45 +2,50 @@
 
 **Status:** Proposed, not implemented  
 **Version:** 0.1-draft  
-**Date:** 2026-10-18  
-**Product scope:** [PRD.md](PRD.md)
+**Date:** 2026-11-21  
+**Product scope:** [PRD.md](PRD.md) · [A2A-first ADR](ADR-001-A2A-FIRST.md)
 
 ## 1. Architecture and invariants
 
-UtterRoute converts **one natural-language instruction** into **at most one allowlisted GET operation** described by an OpenAPI 3.x document. It returns a validated plan, performs a read-only call, or abstains. v0.1 is not a general agent or workflow engine.
+UtterRoute presents a **primary A2A HTTP+JSON interface** for receiving natural-language messages from other agents, then converts each accepted task into **at most one allowlisted GET operation** described by an OpenAPI 3.x document. It returns an A2A task with a plan/result artifact or refuses/requests clarification. The custom `POST /v1/execute` HTTP interface is deferred until v0.2 or later. v0.1 is not a general agent or workflow engine.
 
 **Hard invariants:**
 
 1. Outbound targets come only from operator-controlled connection configuration; never from the prompt, a model, or an OpenAPI server URL.
 2. Only explicitly allowlisted GET operations may execute. No writes or implicit multistep calls.
 3. Required arguments must be validated; missing/ambiguous values cause clarification, never guesses.
-4. `plan` must make **zero upstream business API calls**; `execute` at most one.
+4. An A2A message with `utterroute.mode=plan` must make **zero upstream business API calls**. An accepted read-only execute task may make at most one allowlisted GET, including after clarification continuation.
 5. The model is a selector, not an authority. Policy checks run regardless of model confidence.
 6. Routing failures fail closed, with no automatic unsafe fallback.
 7. An upstream HTTP response is not a guarantee of business correctness.
 
 ```text
-POST /v1/execute
-     |
-     v
-Request validation and registered connection
-     |
-     v
+A2A client
+  |
+  +--> GET /.well-known/agent-card.json
+  +--> POST /message:send  (A2A HTTP+JSON)
+  +--> GET /tasks/{id}
+               |
+               v
+       A2A task manager + auth
+               |
+               v
 OpenAPI operation registry + explicit GET allowlist
-     |
-     v
-Candidate selection -> Jev router (choice + abstain)
-     |
-     v
-Argument resolution -> Schema and policy validation
-     |
-     +---- plan ----> Validated plan, no upstream call
-     |
-     +---- execute -> Fixed-origin GET -> Structured result
+               |
+               v
+Candidate selector -> Jev router (choice + abstain)
+               |
+               v
+Argument resolver -> Schema and policy validation
+               |
+               +--> plan: Task + plan artifact, zero business calls
+               +--> execute: one fixed-origin GET -> Task + result artifact
 ```
 
 ## 2. Component contracts
 
+- **A2A transport:** Serves the Agent Card, handles protocol-versioned `SendMessage` and `GetTask`, validates A2A messages and maps results to conformant Task/Artifact types. Does not authorize API operations by itself.
+- **Task store:** Bounded local task retention (TTL), caller ownership, controlled input-required continuation and terminal-task handling.
 - **OpenAPI importer:** Parses a local OpenAPI file at startup, resolves supported local references, builds operation and scalar-parameter schemas, rejects unsupported/invalid inputs.
 - **Registry:** Immutable initialized collection of named connections, operation IDs, trusted origins, descriptions, method policy and authentication references.
 - **Candidate selector:** Starts with eligible operations; can optionally shorten candidates deterministically for larger catalogs. It must preserve a no-match route.
@@ -48,12 +53,12 @@ Argument resolution -> Schema and policy validation
 - **Argument resolver:** Parses explicit scalar path/query values and can use Jev for bounded enum selection. Tracks missing, conflicting or unsupported arguments.
 - **Compiler:** Converts operation ID and parameters into a validated internal `CompiledPlan`; never takes method, origin, secrets or headers from router output.
 - **Policy guard:** Enforces allowlist, configured origin, method, argument schema and execution mode.
-- **Executor:** Issues one bounded GET with configured upstream credentials; no redirects or automatic retry in v0.1.
+- **Executor:** Issues at most one bounded GET per accepted A2A task using configured upstream credentials; no redirects or automatic retries in v0.1.
 - **Telemetry:** Reports request IDs, stage durations, sanitized selected operations and outcomes.
 
 ## 3. Configuration and runtime
 
-**Proposed implementation:** Python 3.11+, FastAPI, an HTTP client with strict timeouts, and Docker Compose. This is a recommendation, not existing code or a binding maintainer decision.
+**Proposed implementation:** Python 3.11+, FastAPI, an HTTP client with strict timeouts, and Docker Compose. This is a recommendation, not existing code or a binding maintainer decision. Use a version-pinned A2A SDK/contract for HTTP+JSON message and task types where practical; the current codebase does not implement any A2A server yet.
 
 Configuration sketch (illustrative, not executable today):
 
@@ -109,110 +114,75 @@ Input: one or more locally configured OpenAPI 3.0/3.1 YAML or JSON documents.
 
 Canonical internal IDs use `connection_id:operationId`. Imported summaries/descriptions assist routing but are untrusted text and may not change execution policy. The trusted connection configuration, not the OpenAPI `servers` field, controls outbound origins.
 
-## 5. HTTP API (proposed)
+## 5. Public A2A API (v0.1 proposed)
 
-### `GET /healthz`
+The **only business-facing v0.1 protocol is A2A v1 HTTP+JSON**, consistent with the [A2A specification](https://a2a-protocol.org/v1.0.0/specification/) and [ADR-001](ADR-001-A2A-FIRST.md). This binding uses normal HTTP methods and A2A JSON bodies; it is not the JSON-RPC binding.
 
-Reports local process liveness; does not contact the Jev provider or upstream API.
+### `GET /.well-known/agent-card.json`
 
-### `POST /v1/execute`
+Return a valid A2A Agent Card declaring:
+- `name`, `description`, `version`, supported input/output modes, and a constrained read-API skill;
+- `supportedInterfaces` with `protocolBinding: "HTTP+JSON"`, the declared A2A protocol version and an externally configured absolute HTTPS URL in deployed environments;
+- an accurate authentication/security scheme; no secret connection names or upstream credentials;
+- optional capabilities such as `streaming`, `pushNotifications`, and `extendedAgentCard` set false/omitted until actually supported.
 
-Content type: `application/json`.
+Agent Card discovery does not grant access to tasks or upstream APIs. Skill names are stable business-level descriptions, not unlimited permission to choose arbitrary OpenAPI operations. For v0.1, one operator-configured connection per deployed agent is enough.
 
-```json
-{
-  "connection_id": "billing-demo",
-  "request": "List unpaid invoices",
-  "mode": "plan"
-}
+### `POST /message:send` — A2A `SendMessage`
+
+Receive an A2A v1 `SendMessageRequest` with a `ROLE_USER` message and at least one text part. The authenticated caller may submit a new request or continue an existing `TASK_STATE_INPUT_REQUIRED` task with matching `taskId` and `contextId`. Valid requests always produce a server-assigned, retained A2A Task; do not return a custom UtterRoute JSON envelope.
+
+Illustrative HTTP+JSON request (transport headers, including content type and A2A version negotiation, must follow the pinned A2A spec):
+
+```http
+POST /message:send
+Content-Type: application/a2a+json
+A2A-Version: 1.0
+Authorization: Bearer <local-development-token>
 ```
 
-| Field | Required | Behavior |
-| --- | --- | --- |
-| `connection_id` | Yes | Exact name of a preconfigured connection, not a URL |
-| `request` | Yes | Nonempty natural-language instruction within configured size bounds |
-| `mode` | Yes | `plan` or `execute`; absence must not default to execution |
-
-#### Example: plan response (`200`)
-
 ```json
 {
-  "status": "planned",
-  "request_id": "req_example1",
-  "connection_id": "billing-demo",
-  "operation": {
-    "operation_id": "listInvoices",
-    "method": "GET",
-    "path_template": "/invoices"
-  },
-  "arguments": {
-    "path": {},
-    "query": { "status": "unpaid" }
-  },
-  "execution": { "eligible": true, "will_call_upstream": false },
-  "routing": { "engine": "jev", "score": 0.92 }
-}
-```
-
-The example assumes a registered API with `GET /invoices` and supported `status` enum. `score` is a model selection score, **not** an independently calibrated probability of request correctness. Preview values may be redacted if the deployment marks a parameter sensitive.
-
-#### Example: execute response (`200`)
-
-```json
-{
-  "status": "completed",
-  "request_id": "req_example2",
-  "connection_id": "billing-demo",
-  "operation": {
-    "operation_id": "listInvoices",
-    "method": "GET"
-  },
-  "result": {
-    "upstream_status": 200,
-    "content_type": "application/json",
-    "body": {
-      "invoices": [{ "id": "inv_1", "status": "unpaid" }]
-    }
-  },
-  "duration_ms": 231
-}
-```
-
-A completed gateway call is not a claim that domain-level postconditions have been verified. Non-2xx upstream **business** statuses should be represented in `result.upstream_status` with a clear completion status; do not confuse them with routing failures. Upstream responses must be type/size bounded; binary payloads are out of scope.
-
-#### Example: clarification (`422`)
-
-```json
-{
-  "status": "needs_clarification",
-  "request_id": "req_example3",
-  "error": {
-    "code": "MISSING_PARAMETER",
-    "message": "A required invoice identifier could not be resolved.",
-    "fields": ["invoice_id"]
+  "message": {
+    "messageId": "msg-001",
+    "role": "ROLE_USER",
+    "parts": [
+      {"text": "List unpaid invoices"}
+    ]
   }
 }
 ```
 
-#### Error and status codes
+An ordinary text request defaults to **read-only execution**. The optional UtterRoute-specific `message.metadata["utterroute.mode"] = "plan"` requests a preview and **zero upstream business API calls**. This metadata field is a documented application convention, not a core A2A field. No write operation is enabled by omitting it.
 
-| HTTP | Code | Meaning |
+### Task lifecycle and continuation
+
+| Internal result | A2A state | Required behavior |
 | --- | --- | --- |
-| 400 | `INVALID_REQUEST` | Invalid JSON, empty text or bad mode |
-| 401 | `UNAUTHENTICATED` | Optional external/internal gateway auth denied |
-| 403 | `OPERATION_NOT_ALLOWED` | Forbidden/non-GET/unallowlisted operation |
-| 404 | `UNKNOWN_CONNECTION` | Unknown or invisible connection |
-| 422 | `NO_MATCH` | No trustworthy operation |
-| 422 | `MISSING_PARAMETER` | Unresolved required value |
-| 422 | `AMBIGUOUS_ARGUMENT` | Conflicting plausible parameter values |
-| 422 | `UNSUPPORTED_ARGUMENT` | Input schema/extraction beyond v0.1 |
-| 429 | `RATE_LIMITED` | Quota or rate policy applied |
-| 502 | `UPSTREAM_ERROR` | Upstream transport/protocol failure |
-| 503 | `ROUTER_UNAVAILABLE` | Routing provider unavailable; nothing executed |
-| 504 | `UPSTREAM_TIMEOUT` | Upstream timed out |
-| 500 | `INTERNAL_ERROR` | Sanitized unexpected server error |
+| Successful preview | `TASK_STATE_COMPLETED` | Plan artifact; no upstream call |
+| Valid GET with upstream response | `TASK_STATE_COMPLETED` | Result artifact includes selected operation, sanitized typed args, actual upstream status and bounded body |
+| Missing/ambiguous required argument | `TASK_STATE_INPUT_REQUIRED` | Clarifying status message; no upstream business call |
+| Denied/non-GET/no matching operation | `TASK_STATE_REJECTED` | No business call; sanitized explanation |
+| Routing/transport failure | `TASK_STATE_FAILED` | Sanitized error; do not invent a fallback call |
 
-Non-success payloads use `status: rejected`, `needs_clarification`, or `failed`, plus `request_id` and structured `error`. Never include stack traces, credentials, raw model prompts or private request bodies in public errors.
+A task may reach `TASK_STATE_WORKING` during execution, but terminal tasks cannot be resumed. For input-required tasks, a follow-up with matching `taskId` and `contextId` resumes the **same** task after caller authorization. The runtime rejects context/task mismatches, unauthorized reads, duplicate execution and expired tasks. **At most one upstream business GET per task** even across retries/continuation.
+
+A `TASK_STATE_COMPLETED` status means the gateway finished its task. A business API can still return a non-2xx status, which must be included in the result artifact rather than disguised as a successful business outcome.
+
+### `GET /tasks/{id}` — A2A `GetTask`
+
+Retrieve a scoped task using the v1 A2A Task schema. Tasks are stored in a **bounded, temporary in-memory single-instance store** with documented TTL/size limits. Unknown, expired or unauthorized tasks must not disclose details; production-grade persistence, resumable streaming and multiworker synchronization are beyond v0.1.
+
+### Protocol errors and operational failures
+
+Malformed A2A messages, unsupported protocol versions, invalid task IDs, unsupported capabilities, and authentication failures use the protocol's error shape and HTTP status defined by the pinned A2A binding. **Do not reuse** the deferred proprietary HTTP error envelope for A2A.
+
+For an accepted task, represent expected application outcomes by Task state and/or artifact; in particular, distinguish refused operations, requests for clarification, inference outages and upstream failures. A2A authentication must be separate from service credentials for the target REST API.
+
+### Deferred custom native HTTP adapter
+
+`POST /v1/execute` is **not part of v0.1**. The old request/response draft is retained for potential **v0.2+** work at [HTTP_API_FUTURE.md](HTTP_API_FUTURE.md); it must call the same core service and must not bypass A2A-era policy/validation. No extra proprietary HTTP endpoint is needed to pass v0.1 acceptance.
+
 
 ## 6. Routing logic
 
@@ -225,7 +195,7 @@ Non-success payloads use `status: rejected`, `needs_clarification`, or `failed`,
 
 Thresholds should be selected from evaluation data, not hardcoded as a universal guarantee. Evaluate sensitivity to candidate ordering, phrasing, and schema-description changes. Model scoring does not replace checking the final operation and arguments.
 
-### Optional SystemOne interoperability (reference)
+### Optional SystemOne interoperability (reference; transport independent of A2A)
 
 [SystemOne](https://github.com/codesoda/systemone) provides an independent, MIT-licensed Jev-compatible decision server across multiple local/hosted backends. For a **future optional adapter**, UtterRoute could call its `POST /v1/systemone` over HTTP using the [published compatible wire schema](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json). SystemOne is **not** an API/tool executor; OpenAPI operation filtering, parameter validation, destination policy and upstream execution remain inside UtterRoute.
 
@@ -257,7 +227,7 @@ Design considerations if that adapter is implemented:
 
 ## 7. Argument extraction and validation
 
-The minimal supported resolution strategy is deliberately conservative:
+The minimal supported resolution strategy is deliberately conservative; it applies to the core service regardless of outer A2A or future native HTTP transport:
 
 - Unambiguous literal path IDs (e.g., “invoice `inv_123`”), without hallucinated resource IDs.
 - Schema enum values via exact matching or bounded Jev selection.
@@ -281,7 +251,7 @@ CompiledPlan:
   route_metadata
 ```
 
-The URL assembler safely escapes path segments and query strings using a robust HTTP client, rejecting path traversal and injection. It cannot accept absolute URLs, changes of scheme/host, or unregistered headers from model content. Revalidate all constraints **again** immediately before execution. The returned plan is not an executable approval token.
+The URL assembler safely escapes path segments and query strings using a robust HTTP client, rejecting path traversal and injection. It cannot accept absolute URLs, changes of scheme/host, or unregistered headers from model content. Revalidate all constraints **again** immediately before execution. An A2A plan artifact is informational, not an executable approval token.
 
 ## 8. Security and network execution
 
@@ -296,7 +266,7 @@ The URL assembler safely escapes path segments and query strings using a robust 
 - Do not automatically retry business API calls; GET endpoints are expected to be safe, but upstreams may violate HTTP semantics.
 - Do not imply tenant-scoped identity/RBAC or OAuth account linking: not implemented in v0.1.
 
-**Plan semantics:** `plan` may call the external Jev inference provider, which can receive the instruction and minimal operation descriptions. It must not make an upstream business API call. Document data-processing implications for deployers.
+**Plan semantics:** A2A requests explicitly marked `utterroute.mode=plan` may call the external Jev inference provider, which can receive the instruction and minimal operation descriptions. They must not make an upstream business API call. Document data-processing implications for deployers.
 
 **Failure semantics:** If a GET was sent but transport failed before a response, report uncertainty; never claim the backend was not called.
 
@@ -308,12 +278,15 @@ For evaluation, create a labeled fixture set with expected operation, expected a
 
 ## 10. Test and release plan
 
-**Unit tests:** OpenAPI import and rejection, operation ID stability, candidate validation, provider outages, enum/number/date parsing, conflicting values, URL encoding/traversal, status mapping and redaction.
+**Unit tests:** A2A request/Task/Agent Card schemas, task-state mapping and ownership/expiry; OpenAPI import and rejection, operation ID stability, candidate validation, provider outages, enum/number/date parsing, conflicting values, URL encoding/traversal, status mapping and redaction.
 
-**Integration tests:** A deterministic mock `billing-demo` exposing `GET /invoices` and `GET /invoices/{invoice_id}`:
+**Integration tests:** A pinned, independent A2A client interacting with a deterministic mock `billing-demo` exposing `GET /invoices` and `GET /invoices/{invoice_id}`:
 
-- `plan` sends zero calls to the mock upstream.
-- `execute` sends exactly one valid GET.
+- A2A Agent Card can be discovered and parsed; `SendMessage` returns a Task; `GetTask` retrieves only authorized tasks.
+- A2A plan-only metadata produces a completed plan artifact and zero business calls.
+- An ordinary read-only A2A request executes at most one valid GET per Task, returning a structured result artifact.
+- Input-required tasks can be continued; terminal tasks cannot be resumed or re-executed.
+- Unauthorized task retrieval and missing/expired task references reveal no confidential data.
 - Write intents, unknown operations, ambiguous IDs and unsupported schemas send zero calls.
 - Provider timeout, upstream 4xx/5xx, oversized responses and redirects have explicit test coverage.
 - Secrets do not appear in responses/logs.
@@ -325,8 +298,9 @@ For evaluation, create a labeled fixture set with expected operation, expected a
 - [ ] Docker-based sample functions from a fresh clone with documented dependencies
 - [ ] Local OpenAPI 3.x importer and GET operation allowlist
 - [ ] Pinned Jev integration and explicit routing error behavior
-- [ ] Working `plan` / `execute` and documented JSON/error contracts
-- [ ] Tests prove no upstream call on plan/refused input
+- [ ] A2A HTTP+JSON Agent Card, `SendMessage`, `GetTask`, task state and artifact contracts pass independent client tests
+- [ ] Plan-only task and read-only execution through the same internal service; custom HTTP adapter deferred
+- [ ] Tests prove no upstream call on plan/refused/input-required requests, and at most one GET per task
 - [ ] Network/security hardening and diagnostic redaction tested
 - [ ] Honest routing/latency benchmark versus baseline
 - [ ] Security limits and third-party data egress documented
@@ -336,9 +310,11 @@ For evaluation, create a labeled fixture set with expected operation, expected a
 ```text
 README.md
 LICENSE
-docs/{PRD.md,SPEC.md}
+docs/{PRD.md,SPEC.md,ADR-001-A2A-FIRST.md,HTTP_API_FUTURE.md,SYSTEMONE_PATTERNS.md}
 src/utterroute/
-  api/
+  a2a/
+  tasks/
+  api/  # internal service; public native HTTP adapter deferred
   config/
   openapi/
   registry/
@@ -354,4 +330,4 @@ compose.yaml
 pyproject.toml
 ```
 
-Later releases may add approved writes, verification receipts, multiple dependent operations, entity lookup across APIs, MCP/GraphQL, delegated tenant access and a managed control plane. These require separate product decisions and threat modeling.
+Later releases may add the secondary custom `/v1/execute` interface, streaming/cancel/push, durable tasks, approved writes, verification receipts, multiple dependent operations, entity lookup across APIs, MCP/GraphQL, delegated tenant access and a managed control plane. These require separate product decisions and threat modeling.
