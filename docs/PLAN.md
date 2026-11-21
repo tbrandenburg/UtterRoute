@@ -100,17 +100,23 @@ Run all three execution paths on the **same configured targets**:
 
 **Prove:** Explicit/deterministic routing selects the handler with **zero inference calls**. Missing/ambiguous/invalid data produces clarification/refusal with **zero handler calls**. No arbitrary method reflection, model-invented struct values, remote code registration or generated function-call sequences. Jev remains optional and can select one ID/abstain only.
 
+**MCP Go SDK lesson to test:** Typed registration should infer and check **both** input and output JSON Schemas **before serving**, with clear errors for unsupported `any`/ambiguous types, duplicate capability IDs, invalid handler signatures and schema-generation failures. Reject unknown input properties under a strict default, while keeping A2A envelope/metadata outside the handler argument schema. Exercise required-vs-optional, absent-vs-null-vs-zero, enum/range refinements, and custom JSON marshaling. Do **not** copy MCP transport or its tool result envelope.
+
 ### SDK-2 — Security and local execution limits
 
 **Deliver:** Caller authorization, input/output bounds, cooperative context deadline, concurrency cap, duplicate-task prevention and safe A2A artifact/error mapping.
 
 **Prove:** Plan-only and unauthorized requests execute **zero** handlers; replay cannot execute the same admitted task twice. Slow and oversized handlers are bounded at the SDK boundary, with the explicit limitation that cancellation cannot forcibly kill a running Go function. Initial SDK supports **reviewed read-only synchronous functions only**; developers remain responsible for side effects, credentials and tenant data isolation in the host process.
 
+**MCP-derived failure-path tests:** Validate and bound **serialized output** before emitting an A2A artifact (including `nil`, empty results, custom marshalers and oversized payloads); distinguish malformed A2A requests from handler validation/business errors; sanitize handler errors and recover panics per invocation. Freeze local registrations after startup; reject duplicate IDs and runtime replacement. Verify a `ReadOnly` annotation alone cannot bypass actual caller/domain authorization. No handler executes on invalid schema/input, denied task, plan-only request or unknown capability.
+
 ### SDK-3 — Compare and decide
 
 **Measure:** Direct Go function invocation vs embedded A2A invocation (p50/p95, allocations, overhead); integration steps to expose one function through the SDK vs a hand-written A2A wrapper and a comparable MCP tool; correctness/abstention and no-unwanted-execution rates.
 
-**Exit gate:** Keep `local_handler` only if one registered function can be exposed via an independent A2A client with less integration complexity and acceptable measurable overhead. If the SDK merely wraps a function with no selection or interoperability benefit, narrow or drop it. Do not bundle semantic extraction or multi-agent orchestration merely to make the SDK seem useful.
+**Exit gate:** Keep `local_handler` only if one registered function can be exposed via an independent A2A client with less integration complexity and acceptable measurable overhead. Include a table of registration/schema failures, wrong-caller/unknown-field refusals, output-validation failures and panic recovery in the published test evidence. If the SDK merely wraps a function with no selection or interoperability benefit, narrow or drop it. Do not bundle semantic extraction or multi-agent orchestration merely to make the SDK seem useful.
+
+**Reference basis:** [Official MCP Go SDK typed `AddTool` documentation](https://github.com/modelcontextprotocol/go-sdk/blob/main/docs/server.md), [registration/schema issue #731](https://github.com/modelcontextprotocol/go-sdk/issues/731) and [strict-property issue #892](https://github.com/modelcontextprotocol/go-sdk/issues/892). These motivate the **UtterRoute SDK's tests**; MCP is not a new transport/dependency.
 
 **Shared invariant:** A single Task invokes **one authorized capability**—one REST GET, one initial remote A2A delegation, **or (embedded mode) one local Go handler**. No fan-out, chaining or executable model plans.
 
