@@ -9,7 +9,7 @@
 
 [SystemOne](https://github.com/codesoda/systemone) provides a Jev-compatible HTTP server and interchangeable inference backends for typed decisions (Choice, Noul, Score). It does **not** import OpenAPI catalogs, resolve API business entities, check API permissions, or execute arbitrary REST operations. Those remain UtterRoute's responsibilities.
 
-We can **reuse design patterns** from SystemOne without copying implementation code, embedding Rust crates, or making it a dependency. The first UtterRoute release remains a Jev-first, single-operation, allowlisted-GET gateway as documented in the [PRD](PRD.md).
+We can **reuse design patterns** from SystemOne without copying implementation code, embedding Rust crates, or making it a dependency. The first UtterRoute release remains an **A2A-first**, Jev-first, single-operation, allowlisted-GET gateway as documented in the [PRD](PRD.md) and [ADR-002](ADR-002-GO-V0.1.md).
 
 ## Patterns worth adopting
 
@@ -21,7 +21,7 @@ We can **reuse design patterns** from SystemOne without copying implementation c
 | **4. Explicit backends, pinning, no silent fallback** | [SystemOne sample configuration](https://github.com/codesoda/systemone/blob/main/examples/systemone.config.toml) and [backend contract](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/host.rs) | Put router provider/model/version, connection secrets and permitted inference destination in operator configuration. Never switch to hosted inference automatically when local inference fails. | **v0.1: Adopt** |
 | **5. Bounded queues and deadlines** | [Resident worker registry](https://github.com/codesoda/systemone/blob/main/crates/systemone-http/src/registry.rs) and [server](https://github.com/codesoda/systemone/blob/main/crates/systemone-http/src/server.rs) | Enforce concurrency limits and deadlines for gateway requests and provider calls; distinguish overload, timeout and provider failure. Do not reproduce a complex resident model worker unless we actually host models. | **v0.1: Simple limits; advanced later** |
 | **6. Safe hosted transport** | [Remote transport](https://github.com/codesoda/systemone/blob/main/crates/systemone-remote/src/transport.rs) | Fixed destinations, no redirects, bounded response bodies, per-call secrets, timeouts, no transparent retries, and no blindly forwarded client headers. Apply separately to model calls and business GET calls. | **v0.1: Adopt** |
-| **7. Diagnostic metadata outside the model result** | [HTTP server headers](https://github.com/codesoda/systemone/blob/main/crates/systemone-http/src/server.rs) | Keep internal model version, provider, duration and routing evidence as sanitized metadata; preserve UtterRoute's documented plan/result/error schema. Do not leak prompts, credentials or upstream body. | **v0.1: Adopt** |
+| **7. Diagnostic metadata outside the model result** | [HTTP server headers](https://github.com/codesoda/systemone/blob/main/crates/systemone-http/src/server.rs) | Keep internal model version, provider, duration and routing evidence as sanitized metadata; preserve UtterRoute's documented A2A Task/artifact/error contract. Do not leak prompts, credentials or upstream body. | **v0.1: Adopt** |
 | **8. Compatibility tests distinct from quality evaluations** | [TypeSafe SDK compatibility smoke](https://github.com/codesoda/systemone/blob/main/compat/sdk-js/smoke.mjs) and [GLiNER2 evaluation](https://github.com/codesoda/systemone/blob/main/docs/gliner2-evaluation.md) | Test wire interoperability separately from operation accuracy, abstention quality, argument correctness and end-to-end API-call safety across backends. | **v0.1: Adopt evaluation philosophy** |
 | **9. Accurate third-party attribution** | [LICENSE](https://github.com/codesoda/systemone/blob/main/LICENSE) and [third-party notices](https://github.com/codesoda/systemone/blob/main/THIRD_PARTY.md) | Keep UtterRoute MIT; attribute referenced projects. Verify any downloaded model weights separately; MIT project code does **not** license model artifacts or hosted API use. | **v0.1: Adopt** |
 
@@ -33,13 +33,13 @@ We can **reuse design patterns** from SystemOne without copying implementation c
 
 SystemOne's [neutral `DecisionHost`](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/host.rs) separates typed inference from transport and model ownership. UtterRoute should use a smaller analogous interface:
 
-```python
-# Interface sketch only; not implemented.
-def route(instruction, allowed_candidates, request_context) -> RoutingDecision:
-    # operation_id: registered candidate ID or None
-    # score: provider score, not verified correctness
-    # reason: selected / no_match / unavailable / unsupported
-    ...
+```go
+// Interface sketch only; not implemented.
+type Router interface {
+    Route(ctx context.Context, instruction string, candidates []Candidate) (RoutingDecision, error)
+}
+// RoutingDecision contains a registered operation ID (or abstain),
+// a provider-specific score (not business correctness), and a reason.
 ```
 
 Only the **allowlisted** OpenAPI operations are ever passed in as candidates. A decision is an untrusted *proposal*; the gateway rechecks the operation method, parameters and configured destination.
@@ -109,7 +109,7 @@ A successful HTTP request or passing SDK smoke test proves **wire compatibility*
 
 ## Where *not* to reuse SystemOne
 
-- **No embedded Rust inference runtime in the initial Python service.** If desired later, call SystemOne through its documented HTTP interface as an independently deployed optional service.
+- **No embedded Rust inference runtime in the initial Go service.** If desired later, call SystemOne through its documented HTTP interface as an independently deployed optional service.
 - **No assumption that local backends are TypeSafe Jev weights.** They are distinct models with separate capabilities, performance and weight licenses.
 - **No local-to-cloud fallback by surprise.** Explicit provider selection and data-egress disclosures remain mandatory.
 - **No dependency on SystemOne for OpenAPI ingestion, parameter resolution, policy enforcement or HTTP business execution.** It is the decision layer, not the API gateway.
