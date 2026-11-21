@@ -5,6 +5,8 @@
 **Scope:** v0.1 implementation language and runtime (not a change to product goals)  
 **Related:** [ADR-001: A2A-first](ADR-001-A2A-FIRST.md) · [PRD](PRD.md) · [SPEC](SPEC.md) · [SystemOne patterns](SYSTEMONE_PATTERNS.md)
 
+> **Scope update (ADR-003):** [Capability resolver, not API gateway](ADR-003-CAPABILITY-RESOLVER.md) retains the **Go + official A2A SDK** implementation decision while refining the product beyond a REST-only gateway. Its two target kinds are REST GET and registered A2A agent skills; explicit/deterministic selection does **not** require a model. Earlier Go-versus-Rust rationale still stands, while references below to mandatory Jev and a REST-only first release are superseded by ADR-003.
+
 ## Context
 
 UtterRoute v0.1 must expose an **A2A v1 HTTP+JSON agent**, accept `SendMessage`, manage scoped tasks and clarification, import a local OpenAPI-described REST API, select one allowlisted GET operation using Jev, validate scalar arguments, then produce a Task with a structured result artifact.
