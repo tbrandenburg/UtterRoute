@@ -14,7 +14,7 @@ Existing APIs and A2A agents already know **how** to handle requests. UtterRoute
 
 - **Direct path:** An explicitly named, authorized capability or unambiguous configured rule bypasses inference entirely.
 - **Optional semantic path:** Jev (and potentially SystemOne later) may resolve ambiguous requests when evaluated and configured. No model key is required for direct routing.
-- **Two target kinds:** A configured **REST GET** operation or a trusted, operator-approved **remote A2A skill**. A remote agent may have side effects; it requires its own skill approval policy.
+- **Two target kinds:** A configured **REST GET** operation or a trusted, operator-approved **remote A2A capability**. A remote agent may have side effects; it requires its own capability approval policy.
 - **Existing infrastructure stays in place:** Use Kong, Envoy, a cloud API gateway or a plain reverse proxy for ingress, TLS, WAF/DDoS defense and general traffic controls. UtterRoute enforces its own capability/task authorization and outbound constraints.
 
 The first release aims to demonstrate **one REST operation and one independent A2A agent**, with exactly one selected target per incoming task. The differentiator to validate is selection quality, ease of integration and acceptable additional latency—not generic HTTP throughput. See [ADR-003](docs/ADR-003-CAPABILITY-RESOLVER.md).
@@ -40,7 +40,7 @@ Authorization: Bearer <local-development-token>
 }
 ```
 
-UtterRoute would deterministically select the registered billing capability, validate the arguments and return an A2A **Task** with a result artifact containing the upstream status and bounded response. The client could retrieve that Task with `GET /tasks/{id}`. **No Jev call is necessary when the configured rule uniquely identifies the capability.** A different request may select an operator-approved remote A2A research skill, which UtterRoute invokes through a standard outbound `SendMessage` and tracks as a child Task.
+UtterRoute would deterministically select the registered billing capability, validate the arguments and return an A2A **Task** with a result artifact containing the upstream status and bounded response. The client could retrieve that Task with `GET /tasks/{id}`. **No Jev call is necessary when the configured rule uniquely identifies the capability.** A different request may select an operator-approved remote A2A research capability, which UtterRoute invokes through a standard outbound `SendMessage` and tracks as a child Task.
 
 If an invoice identifier is missing, the Task enters `TASK_STATE_INPUT_REQUIRED`; the client can supply the missing value in another `SendMessage` referencing the task. To preview a plan with **no downstream REST or A2A call**, clients can set `message.metadata["utterroute.mode"] = "plan"`.
 
@@ -57,7 +57,7 @@ A2A client -> existing ingress / gateway (optional)
                     v
           Caller-approved capability catalog
           +-----------------+-----------------+
-          | REST GETs       | A2A agent skills|
+          | REST GETs       | A2A agents     |
           +-----------------+-----------------+
                     |
                     v
@@ -89,10 +89,10 @@ Its [documented wire subset](https://github.com/codesoda/systemone/blob/main/com
 ## v0.1 goals
 
 - Expose a bounded A2A v1 HTTP+JSON Agent Card, `SendMessage`, `GetTask`, caller-scoped Tasks and artifacts.
-- Register one local OpenAPI **GET** operation and one **existing approved A2A agent skill**, each with a stable capability ID and trusted target reference.
+- Register one local OpenAPI **GET** operation and one **approved A2A agent capability**, each with a stable capability ID and trusted target reference.
 - Apply caller eligibility **before** selection; use explicit/deterministic resolution by default, with zero inference calls on that path.
 - Dispatch **one** approved target per task: validated REST GET **or** remote A2A `SendMessage`, preserving child Task/context and bounded continuation.
-- Treat remote agent skills as potentially side-effecting and deny unapproved/unknown-risk skills by default.
+- Treat remote agent capabilities as potentially side-effecting and deny unapproved/unknown-risk skills by default.
 - Abstain or request clarification when no unambiguous authorized capability exists; plan-only metadata sends **zero** calls to either kind of target.
 - Preserve minimal local trust, workload bounds and outbound safety; rely on existing API gateways/ingress for commodity network protections.
 - Measure direct vs deterministic dispatch overhead, correctness and the developer experience. Add **optional** semantic inference only if it demonstrates value.
@@ -120,7 +120,7 @@ The docs are proposals open for review. Examples above describe intended interfa
 **Implementation direction:** [Go](https://go.dev/) with official [A2A Go SDK v2](https://github.com/a2aproject/a2a-go), [kin-openapi](https://github.com/getkin/kin-openapi) and thin standard HTTP/A2A clients. No application code has shipped yet.
 
 1. **A2A skeleton:** Agent Card, `SendMessage`, `GetTask`, bounded caller-owned Task lifecycle and a real A2A client.
-2. **Two target kinds:** Register one billing GET operation and one independently running A2A agent skill, each with configured eligibility and a deterministic match.
+2. **Two target kinds:** Register one billing GET operation and one independently running A2A agent capability, each with configured eligibility and a deterministic match.
 3. **Dispatch:** One approved target per task, independent REST/A2A adapter tests, child-task correlation and replay prevention.
 4. **Validate the wedge:** Compare direct invocation against the deterministic UtterRoute path for latency, correctness and developer effort; publish honest results.
 5. **Semantic experiment (optional):** Add hosted Jev selection only if it improves held-out ambiguous capability selection enough to justify its latency and cost.
@@ -129,7 +129,7 @@ Do not ship a general HTTP gateway, model-dependent fast path or `/v1/execute` A
 
 ## Security model
 
-UtterRoute aims to fail closed. A2A caller authentication, authorization to retrieve/continue tasks, and task retention rules are separate from target credentials. Only developer-configured REST origins/GET operations and explicitly approved remote A2A agents/skills may be called; no model-produced URL or credentials are trusted. A low-confidence or ambiguous request should result in clarification/refusal rather than execution. Planning may send natural-language instructions and selected operation descriptions to the inference provider, which should be considered when handling sensitive data.
+UtterRoute aims to fail closed. A2A caller authentication, authorization to retrieve/continue tasks, and task retention rules are separate from target credentials. Only developer-configured REST origins/GET operations and explicitly approved remote A2A agents and their registered capabilities may be called; no model-produced URL or credentials are trusted. A low-confidence or ambiguous request should result in clarification/refusal rather than execution. Planning may send natural-language instructions and selected operation descriptions to the inference provider, which should be considered when handling sensitive data.
 
 Until authentication, authorization, networking and deployment controls have been implemented and tested, **do not expose future development builds on a public network or use them for privileged production operations**. The design explicitly excludes tenant-level delegated authorization in v0.1. See [SPEC.md](docs/SPEC.md) for the planned safeguards.
 
