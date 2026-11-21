@@ -45,7 +45,7 @@ Argument resolver -> Schema and policy validation
 ## 2. Component contracts
 
 - **A2A transport:** Serves the Agent Card, handles protocol-versioned `SendMessage` and `GetTask`, validates A2A messages and maps results to conformant Task/Artifact types. Does not authorize API operations by itself.
-- **Task store:** Bounded local task retention (TTL), caller ownership, controlled input-required continuation and terminal-task handling.
+- **Task store:** Prefer an appropriately wrapped official `a2asrv/taskstore` implementation for A2A Task persistence, with **verified caller authentication configured explicitly**, bounded local retention (TTL), controlled input-required continuation and terminal-task/replay handling. The SDK in-memory store's default empty caller identity is not adequate as authorization.
 - **OpenAPI importer:** Parses a local OpenAPI file at startup, resolves supported local references, builds operation and scalar-parameter schemas, rejects unsupported/invalid inputs.
 - **Registry:** Immutable initialized collection of named connections, operation IDs, trusted origins, descriptions, method policy and authentication references.
 - **Candidate selector:** Starts with eligible operations; can optionally shorten candidates deterministically for larger catalogs. It must preserve a no-match route.
@@ -58,7 +58,7 @@ Argument resolver -> Schema and policy validation
 
 ## 3. Configuration and runtime
 
-**Proposed implementation:** Python 3.11+, FastAPI, an HTTP client with strict timeouts, and Docker Compose. This is a recommendation, not existing code or a binding maintainer decision. Use a version-pinned A2A SDK/contract for HTTP+JSON message and task types where practical; the current codebase does not implement any A2A server yet.
+**Proposed reference implementation:** **Go 1.26+** with official [`a2a-go/v2`](https://github.com/a2aproject/a2a-go) for A2A v1 HTTP+JSON (`a2asrv`/REST handler), standard `net/http` for serving and outbound clients, and [`kin-openapi`](https://github.com/getkin/kin-openapi) for a constrained OpenAPI 3.0/3.1 importer. See [ADR-002](ADR-002-GO-V0.1.md) for the language decision, Rust trade-offs, task-store caveats and phased PRs. Pin a tested SDK version and Go 1.26+ toolchain in the **first implementation PR**; these documents are not runnable code and no SDK is installed yet.
 
 Configuration sketch (illustrative, not executable today):
 
@@ -278,7 +278,7 @@ For evaluation, create a labeled fixture set with expected operation, expected a
 
 ## 10. Test and release plan
 
-**Unit tests:** A2A request/Task/Agent Card schemas, task-state mapping and ownership/expiry; OpenAPI import and rejection, operation ID stability, candidate validation, provider outages, enum/number/date parsing, conflicting values, URL encoding/traversal, status mapping and redaction.
+**Unit tests (Go `testing` and `httptest`, with `-race` in CI):** A2A request/Task/Agent Card schemas, task-state mapping and ownership/expiry; OpenAPI import and rejection, operation ID stability, candidate validation, provider outages, enum/number/date parsing, conflicting values, URL encoding/traversal, status mapping and redaction.
 
 **Integration tests:** A pinned, independent A2A client interacting with a deterministic mock `billing-demo` exposing `GET /invoices` and `GET /invoices/{invoice_id}`:
 
@@ -310,24 +310,24 @@ For evaluation, create a labeled fixture set with expected operation, expected a
 ```text
 README.md
 LICENSE
-docs/{PRD.md,SPEC.md,ADR-001-A2A-FIRST.md,HTTP_API_FUTURE.md,SYSTEMONE_PATTERNS.md}
-src/utterroute/
-  a2a/
-  tasks/
-  api/  # internal service; public native HTTP adapter deferred
+docs/{PRD.md,SPEC.md,ADR-001-A2A-FIRST.md,ADR-002-GO-V0.1.md,HTTP_API_FUTURE.md,SYSTEMONE_PATTERNS.md}
+go.mod
+cmd/utterroute/main.go
+internal/
+  a2a/             # A2A SDK adapter and Agent Card
+  tasks/           # auth-aware store and continuation
+  gateway/         # transport-independent orchestration
   config/
-  openapi/
-  registry/
-  routing/{base.py,jev.py}
+  openapi/         # local importer and operation registry
+  router/          # Router interface, Jev adapter
   arguments/
   policy/
   execution/
   telemetry/
 examples/billing/
-tests/{unit,integration,evaluation}/
+tests/{integration,evaluation}/
 Dockerfile
 compose.yaml
-pyproject.toml
 ```
 
 Later releases may add the secondary custom `/v1/execute` interface, streaming/cancel/push, durable tasks, approved writes, verification receipts, multiple dependent operations, entity lookup across APIs, MCP/GraphQL, delegated tenant access and a managed control plane. These require separate product decisions and threat modeling.

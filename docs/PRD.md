@@ -132,7 +132,7 @@ Targets are hypotheses, not measurements. Benchmark samples must include paraphr
 
 ## 8. Milestones (A2A first)
 
-1. **A2A protocol skeleton:** Pin tested A2A v1 library/spec version, Agent Card, `SendMessage`, `GetTask`, and conformance fixtures.
+1. **A2A protocol skeleton (Go):** Pin Go toolchain and official `a2a-go/v2` release, implement Agent Card, `SendMessage`, `GetTask`, and conformance fixtures.
 2. **Task lifecycle and isolation:** Bounded single-instance task store, TTL, caller authorization, input-required continuation and terminal-state handling.
 3. **API gateway core:** OpenAPI importer, allowlist, mock billing API, safe network boundaries, deterministic fake router.
 4. **Jev and execution:** Jev adapter, scalar resolution, safe plan/read-only GET execution, artifact/task mapping and traces.
@@ -156,7 +156,9 @@ The native `POST /v1/execute` HTTP adapter comes **after** the first A2A-first r
 
 ## 10. Decisions still open
 
-- First reference implementation language and framework (proposal: Python + FastAPI, pending maintainer decision).
+**Implementation language decision:** [ADR-002](ADR-002-GO-V0.1.md) proposes **Go** with the official `a2a-go/v2` SDK, standard `net/http`, and `kin-openapi`; the A2A-first product contract is unchanged.
+
+- Exact pinned A2A Go SDK release and required Go 1.26+ toolchain patch for the first implementation PR.
 - Whether the A2A plan-only artifact should expose raw argument values or a redacted preview by default.
 - Which pinned A2A SDK version and data storage implementation to choose for the first local-only task store.
 - Which OpenAPI schema features and remote references are supported in the first importer.
