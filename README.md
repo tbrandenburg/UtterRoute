@@ -12,7 +12,8 @@ An agent can call a known REST endpoint or a known A2A agent directly. UtterRout
 
 - **Explicit / deterministic first:** A caller selects an authorized capability ID or matches an unambiguous configured rule. **Zero Jev/SystemOne calls.**
 - **Optional semantic selection:** Later, an evaluated Jev or SystemOne adapter may choose **one eligible capability ID or abstain** when a deterministic decision is not possible. It never creates a workflow.
-- **Two target types:** An allowlisted, validated **REST GET** or one approved outbound **A2A agent delegation**. A remote agent may have side effects; UtterRoute does not control its internal execution.
+- **Two baseline target types:** An allowlisted, validated **REST GET** or one approved outbound **A2A agent delegation**. A remote agent may have side effects; UtterRoute does not control its internal execution.
+- **Proposed third integration mode (later):** A Go app embeds an UtterRoute SDK, registers a reviewed typed **`local_handler`** function and exposes the existing A2A interface. No new wire protocol or cross-process Go calls. This remains a post-S4 experiment, not implemented today.
 - **Existing infrastructure:** Reuse current gateways/ingress for TLS, WAF/DDoS and generic API management. UtterRoute still enforces caller/task/target authorization, egress policy and bounded work.
 
 ```text
@@ -31,6 +32,8 @@ Resolver: explicit -> deterministic -> optional semantic -> abstain
        |
        +--> A2A Target: one approved SendMessage / correlated child task
        |
+       +--> Local Handler (later embedded mode only): one Go function
+       |
        v
 Caller-owned A2A Task / Artifact or clarification / refusal
 ```
@@ -41,7 +44,7 @@ Caller-owned A2A Task / Artifact or clarification / refusal
 
 The first implementation experiment will connect one billing API GET and one independently running research A2A agent. A third-party A2A client must discover, invoke and retrieve results from both through UtterRoute. The deterministic path needs **no model provider key**.
 
-Measure direct target invocation versus UtterRoute for latency, routing correctness, safe refusal and developer setup effort. The experiment ends with an evidence-based **continue / narrow to a library / stop** decision. See the active [implementation plan](docs/PLAN.md) for S0–S4, acceptance tests and limits. This is a **hypothesis to validate**, not evidence that the architecture is already performant.
+Measure direct target invocation versus UtterRoute for latency, routing correctness, safe refusal and developer setup effort. The experiment ends with an evidence-based **continue / narrow to a library / stop** decision. See the active [implementation plan](docs/PLAN.md) for S0–S4, acceptance tests and limits. The same plan describes the **separate optional embedded Go SDK experiment (SDK-0–SDK-3)** after the baseline. This is a **hypothesis to validate**, not evidence that the architecture is already performant.
 
 ## Project documentation
 
@@ -50,7 +53,7 @@ Measure direct target invocation versus UtterRoute for latency, routing correctn
 | [PRD](docs/PRD.md) | Product positioning, non-goals, five user journeys, requirements and adoption criteria |
 | [ARCH](docs/ARCH.md) | Architecture, Go boundaries, A2A/REST contracts, security and technical verification |
 | [AGENTS](AGENTS.md) | Coding-agent/contributor rules, terminology, working practices and scope constraints |
-| [PLAN](docs/PLAN.md) | Active two-target validation spike, S0–S4 execution slices, acceptance tests and benchmarks |
+| [PLAN](docs/PLAN.md) | Two-target S0–S4 execution slices, benchmarks and optional follow-up Go SDK-0–SDK-3 experiment |
 | [ADRs](docs/adr/ADR-003-CAPABILITY-RESOLVER.md) | Decision history: A2A-first, Go, capability resolver product boundary |
 | [Archive](docs/archive/SYSTEMONE_PATTERNS.md) | Deferred SystemOne and custom HTTP design notes; **not** active implementation requirements |
 
