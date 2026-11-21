@@ -107,7 +107,7 @@ v0.1 targets local/controlled evaluation, **not** public production deployment.
 
 - **[Product requirements — v0.1](docs/PRD.md):** Audience, problems, scope, user stories, release criteria and risks.
 - **[Technical specification — v0.1](docs/SPEC.md):** A2A Agent Card, SendMessage, tasks, artifacts, importer constraints, policy, security and testing.
-- **[Two-target validation spike](docs/SPIKE_PLAN.md):** Implementation slices S0–S4, REST/A2A fixtures, safety gates, benchmark design and continue/library/stop criteria.
+- **[Two-target validation spike](docs/PLAN.md):** Implementation slices S0–S4, REST/A2A fixtures, safety gates, benchmark design and continue/library/stop criteria.
 - **[ADR-001 — A2A-first interface](docs/ADR-001-A2A-FIRST.md):** Why A2A ships first, task lifecycle, wire binding and scope boundaries.
 - **[ADR-002 — Go implementation decision](docs/ADR-002-GO-V0.1.md):** Why Go over Rust for v0.1, proposed SDK/tooling, alternatives, and implementation sequence.
 - **[ADR-003 — Capability resolver scope](docs/ADR-003-CAPABILITY-RESOLVER.md):** REST/A2A target model, deterministic-first selection, build-vs-integrate boundary and adoption validation.
@@ -118,7 +118,7 @@ The docs are proposals open for review. Examples above describe intended interfa
 
 ## Initial development roadmap
 
-**Execution plan:** [Two-target validation spike](docs/SPIKE_PLAN.md) provides the actionable, reviewable S0–S4 implementation slices, independent-client demo, explicit scope boundaries and performance/adoption decision gate. The outline below is directional; the spike checklist is authoritative for the first code PRs.
+**Execution plan:** [Two-target validation spike](docs/PLAN.md) provides the actionable, reviewable S0–S4 implementation slices, independent-client demo, explicit scope boundaries and performance/adoption decision gate. The outline below is directional; the spike checklist is authoritative for the first code PRs.
 
 **Implementation direction:** [Go](https://go.dev/) with official [A2A Go SDK v2](https://github.com/a2aproject/a2a-go), [kin-openapi](https://github.com/getkin/kin-openapi) and thin standard HTTP/A2A clients. No application code has shipped yet.
 
