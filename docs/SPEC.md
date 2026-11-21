@@ -296,6 +296,8 @@ For evaluation, create a labeled fixture set with expected operation, expected a
 
 ## 10. Test and release plan
 
+**Spike versus complete v0.1:** Start with the documented [two-target validation spike](SPIKE_PLAN.md): one configured REST GET, one independent A2A agent, zero-inference deterministic selection, bounded ownership/delegation and direct-vs-resolved measurements. The detailed unit/security checklist below is the broader proposed v0.1 release gate; do not treat every item as a prerequisite for measuring the initial two-target slice. Public deployment remains unsupported until the full security gate is satisfied.
+
 **Unit tests (Go `testing` and `httptest`, with `-race` in CI):** A2A request/Task/Agent Card schemas, task-state mapping and ownership/expiry; OpenAPI import and rejection, operation ID stability, candidate validation, provider outages, enum/number/date parsing, conflicting values, URL encoding/traversal, status mapping and redaction.
 
 **Integration tests:** A pinned, independent A2A client interacting with a deterministic mock billing REST API **and** an independent mock A2A research agent:
