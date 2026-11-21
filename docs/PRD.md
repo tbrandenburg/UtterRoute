@@ -3,7 +3,7 @@
 **Release:** v0.1 (proposed)  
 **Status:** Draft for discussion; no implementation is shipped  
 **Last updated:** 2026-11-21  
-**Related:** [Technical specification](ARCH.md) · [Product scope ADR-003](adr/ADR-003-CAPABILITY-RESOLVER.md) · [Project README](../README.md)
+**Related:** [Architecture](ARCH.md) · [Product scope ADR-003](adr/ADR-003-CAPABILITY-RESOLVER.md) · [Project README](../README.md)
 
 ## 1. Summary
 
