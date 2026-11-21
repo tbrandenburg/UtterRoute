@@ -9,7 +9,7 @@
 
 [SystemOne](https://github.com/codesoda/systemone) provides a Jev-compatible HTTP server and interchangeable inference backends for typed decisions (Choice, Noul, Score). It does **not** import OpenAPI catalogs, resolve API business entities, check API permissions, or execute arbitrary REST operations. Those remain UtterRoute's responsibilities.
 
-We can **reuse design patterns** from SystemOne without copying implementation code, embedding Rust crates, or making it a dependency. UtterRoute is now defined as an **A2A-first capability resolver** for an approved REST GET **or** remote A2A skill, with explicit/deterministic routing by default. Jev and SystemOne are **optional** semantic selection providers, not mandatory hops; see the [PRD](PRD.md) and [ADR-003](ADR-003-CAPABILITY-RESOLVER.md).
+We can **reuse design patterns** from SystemOne without copying implementation code, embedding Rust crates, or making it a dependency. UtterRoute is now defined as an **A2A-first capability resolver** for an approved REST GET **or** remote A2A capability, with explicit/deterministic routing by default. Jev and SystemOne are **optional** semantic selection providers, not mandatory hops; see the [PRD](PRD.md) and [ADR-003](ADR-003-CAPABILITY-RESOLVER.md).
 
 ## Patterns worth adopting
 
@@ -42,11 +42,11 @@ type Router interface {
 // a provider-specific score (not business correctness), and a reason.
 ```
 
-Only **eligible, operator-approved** REST operations or A2A skills may be passed as candidates. A decision is an untrusted *proposal*; the resolver rechecks caller authorization, target kind, method/skill policy, parameters and configured destination.
+Only **eligible, operator-approved** REST operations or registered A2A agent capabilities may be passed as candidates. A decision is an untrusted *proposal*; the resolver rechecks caller authorization, target kind, method/target policy, parameters and configured destination.
 
 ### Pattern B — Respect Jev-compatible Choice limits
 
-The [published wire subset](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json) caps a single Choice question at **16 criteria**. Reserve `none_of_the_above` for abstention, leaving a maximum of **15** eligible REST-operation or A2A-skill candidates when using that subset.
+The [published wire subset](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json) caps a single Choice question at **16 criteria**. Reserve `none_of_the_above` for abstention, leaving a maximum of **15** eligible REST-operation or A2A-agent capability candidates when using that subset.
 
 Illustrative request to a separately configured SystemOne server:
 
@@ -117,8 +117,8 @@ A successful HTTP request or passing SDK smoke test proves **wire compatibility*
 
 ## Recommended adoption sequence
 
-1. **Now (foundation):** Define a capability catalog for REST and A2A skills, deterministic-first resolver types, configuration/secret boundaries and evaluation fixtures. Keep a fake router for integration tests; require zero inference on direct selection.
-2. **v0.1 baseline:** Implement a direct/deterministic REST GET and approved remote A2A skill path with one target per task, A2A Task/artifact mapping and no TypeSafe key requirement.
+1. **Now (foundation):** Define a capability catalog for REST operations and A2A agent capabilities, deterministic-first resolver types, configuration/secret boundaries and evaluation fixtures. Keep a fake router for integration tests; require zero inference on direct selection.
+2. **v0.1 baseline:** Implement a direct/deterministic REST GET and approved remote A2A capability path with one target per task, A2A Task/artifact mapping and no TypeSafe key requirement.
 3. **Optional semantic experiment:** Add direct Jev as the first optional selector only if it improves ambiguous resolution; later consider explicit `systemone-http` against a pinned SystemOne release.
 4. **Comparative evaluation:** For ambiguous requests that need a model, run the same held-out UtterRoute requests through direct Jev and selected SystemOne backends. Measure end-to-end correctness, abstention rate, request latency, token/usage costs and unintended business calls; decide whether offering this optional backend is worthwhile.
 
