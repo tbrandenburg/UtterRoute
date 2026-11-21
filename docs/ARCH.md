@@ -14,7 +14,7 @@
 
 ## 1. Architecture and invariants
 
-UtterRoute is a **protocol-facing A2A capability resolver**, not a general HTTP API gateway. An inbound A2A request selects **one** registered, caller-authorized capability: either a permitted REST GET operation or an operator-approved existing A2A agent capability. The resolver dispatches through a thin target adapter, returns a task/artifact, or abstains/clarifies. A2A HTTP+JSON remains the first and only public business interface in v0.1; the proprietary `/v1/execute` design remains deferred.
+UtterRoute is a **protocol-facing A2A capability resolver**, not a general HTTP API gateway. An inbound A2A request selects **one** registered, caller-authorized capability: a permitted REST GET or an approved A2A agent in the baseline. A later **embedded Go SDK** may register a third `local_handler` target for a Go function running **in the same process**. The resolver dispatches through a thin target adapter (or a later in-process handler adapter), returns a task/artifact, or abstains/clarifies. A2A HTTP+JSON remains the first and only public business interface in v0.1; the proprietary `/v1/execute` design remains deferred.
 
 **Hard invariants:**
 
@@ -53,10 +53,10 @@ Resolver + minimal dispatch (one target per task)
 
 - **A2A ingress:** Uses the official A2A SDK for Agent Card, `SendMessage`, `GetTask`, Task and Artifact types. Never acts as a general reverse proxy.
 - **Task store:** Authenticated caller identity, TTL/size bounds, input-required continuation, terminal-task replay protection and mappings to approved downstream A2A task/context IDs.
-- **Capability catalog:** A normalized list of stable IDs, `rest_operation` or `a2a_agent` kind, descriptions, trusted target references, caller eligibility and side-effect risk. No public arbitrary destination registration.
+- **Capability catalog:** A normalized list of stable IDs, target kinds (`rest_operation`, `a2a_agent`, or proposed embedded-only `local_handler`), descriptions, trusted target references/registrations, caller eligibility and risk classification. No public arbitrary destination registration. S0–S4 supports only REST and remote A2A.
 - **REST importer:** Validates configured local OpenAPI and builds allowlisted GET operations with scalar parameter schemas.
 - **A2A agent registration:** Loads an **operator-approved** agent URL and local capability ID; may read its Agent Card to validate declared protocol compatibility, but treats it as untrusted descriptive data. Do not recursively discover agents.
-- **Resolver:** Filters capabilities by caller policy; chooses explicit/authoritatively configured deterministic match or abstains. A semantic `Router` adapter is an **optional extension** that may select only from that filtered set.
+- **Resolver:** Filters by caller policy and selects an explicit/authoritatively configured deterministic match or abstains. Optional semantic `Router` may select only from the filtered set. One selection means one local-handler invocation **or** one remote dispatch, never a sequence.
 - **REST target:** Validates scalar arguments, origin/method policy, assembles a bounded GET with configured credentials and returns the actual HTTP status/body metadata.
 - **A2A target:** Sends one A2A `SendMessage` to an approved agent, correlates child Task state/context, bounds retrieval/polling and maps result/clarification. It does not govern the remote agent's internal actions.
 - **Safety:** Local caller/task authorization, fixed egress, timeouts, bounded pending work, redaction and no duplicate dispatch remain inside UtterRoute even behind existing ingress.
@@ -137,6 +137,76 @@ Canonical internal IDs use `connection_id:operationId`. Imported summaries/descr
 ### Registered downstream A2A agents (v0.1 subset)
 
 A downstream `a2a_agent` capability is **not** an OpenAPI operation or a remotely enforceable AgentSkill. It maps one local capability ID to an operator-approved agent origin, caller eligibility, credential reference and delegation risk policy. The A2A Agent Card's protocol-defined `skills` entries are **descriptive discovery metadata**; A2A `SendMessage` is addressed to an agent, not an individually enforceable AgentSkill. For v0.1 register one approved capability per remote agent target rather than promising per-`AgentSkill` confinement. Validate the Agent Card and supported binding against **local configuration**; it must not override allowlists, credentials or permitted origins. Send at most one new A2A request per incoming task, and track any returned child Task/context IDs for bounded retrieval or authorized input-required continuation. Remote agents may have side effects; unknown-effect delegation is **not automatically safe**.
+
+## 4a. Proposed embedded Go SDK (`local_handler`; post-S4 experiment)
+
+**Purpose:** Let an existing Go application expose reviewed typed functions as caller-authorized A2A capabilities **without writing its own A2A server**. The SDK is a third **target kind/deployment mode**, **not** a third network protocol or a baseline S0–S4 requirement.
+
+### Deployment boundary
+
+```text
+Standalone: A2A ingress -> Catalog -> Resolver -> REST GET | remote A2A
+Embedded:   A2A ingress -> Catalog -> Resolver -> local_handler -> Go function
+                                                          (same process)
+Standalone UtterRoute can call an embedded Go application's A2A endpoint
+as a normal approved remote a2a_agent target; it cannot invoke arbitrary
+functions in a different process.
+```
+
+Reuse the catalog, policy, resolver, task ownership/retention, A2A status/artifact mapping and observability. Add only a typed local-handler adapter plus mounting of the existing A2A interface. Avoid a second resolver or private RPC system.
+
+### Illustrative Go registration API (not yet implemented)
+
+```go
+type LookupInput struct { OrderID string `json:"order_id"` }
+type LookupOutput struct { Status string `json:"status"` }
+
+func lookup(ctx context.Context, in LookupInput) (LookupOutput, error) {
+    return orders.Lookup(ctx, in.OrderID)
+}
+
+router := utterroute.New(/* auth, policies, limits */)
+utterroute.Register(router, utterroute.Capability{
+    ID: "orders.lookup",
+    Description: "Look up an order's status",
+    Effect: utterroute.ReadOnly,
+}, lookup)
+http.Handle("/a2a/", router.Handler())
+```
+
+The exact generic registration signature, caller-policy API, A2A handler mounting and result mapping must be verified during the SDK experiment against the pinned Go A2A SDK. Do not present this sketch as compiling code.
+
+### Local function invocation contract
+
+1. **Trusted registration:** Only application startup code registers stable capability IDs, reviewed descriptions, typed inputs/outputs, risk classification, authorization policy and handlers. Client/model/Agent Card text cannot register functions.
+2. **Selection vs argument binding:** The resolver chooses one eligible capability ID (explicit, deterministic or **optional** semantic selection) or abstains. Jev/SystemOne does **not** synthesize Go struct arguments or execution plans. Initial SDK bindings use **caller-provided structured arguments**; developer-provided deterministic parsing may follow. Missing/ambiguous values produce clarification/refusal.
+3. **Pre-dispatch checks:** Recheck caller permissions; validate required fields, types, sizes and inputs against a bounded schema. Do not reflect over arbitrary exported Go methods, generate code or trust caller-supplied function names.
+4. **Read-only synchronous first:** A registered handler has the conceptual shape `func(context.Context, Input) (Output, error)`. The initial experiment accepts only explicitly reviewed read-only functions. An effect annotation is not a sandbox: a handler could still perform writes. `context.Context` cancellation is **cooperative**; a timeout cannot forcibly stop arbitrary Go code.
+5. **One local invocation per admitted Task:** Protect against concurrent replay and duplicate execution. `plan`, denied or ambiguous requests must execute **zero** handlers. Enforce deadlines, admission/concurrency caps, bounded input/output/artifacts and caller-scoped Task retrieval. No model or hosted-provider key needed for explicit resolution.
+6. **Embedding trust:** Handlers run with the host process's credentials, memory and privileges. The embedding application must provide suitable identity mapping, caller/tenant isolation and domain authorization; UtterRoute does not manufacture a security sandbox.
+7. **No remote Go RPC:** A Go app embedding UtterRoute publishes an A2A endpoint. Standalone UtterRoute may invoke it through existing `a2a_agent` dispatch. No dynamic plugin loading, cross-process Go callbacks or generic method reflection.
+
+### Lessons from the official MCP Go SDK: typed registration, not MCP transport
+
+The official [MCP Go SDK server documentation](https://github.com/modelcontextprotocol/go-sdk/blob/main/docs/server.md) and [typed `AddTool` implementation](https://github.com/modelcontextprotocol/go-sdk/blob/main/mcp/server.go) are **design references only**. Their generic registration pattern infers schemas from Go types and validates both input and serialized output, while the low-level registration path leaves validation to callers. UtterRoute should adopt the safety/ergonomics pattern in its **own** `local_handler` adapter, using the existing **A2A** transport; do **not** introduce a mandatory MCP runtime or claim that an A2A `AgentSkill` is a callable MCP tool.
+
+| MCP lesson / known pitfall | Proposed UtterRoute SDK safeguard |
+| --- | --- |
+| Generic typed binding avoids repeated hand-written JSON parsing, but invalid inferred types can be discovered late ([schema-validation issue](https://github.com/modelcontextprotocol/go-sdk/issues/731)) | Infer a **bounded JSON Schema at registration** from concrete `Input`/`Output` types, and **fail registration before serving** on unsupported `any`/`interface{}`, unchecked maps, recursive/invalid schemas, unsupported custom marshalers, duplicate capability IDs or incompatible handler signatures. Return actionable errors, not silent schema weakening. |
+| Inferred object schemas often reject additional properties ([additionalProperties issue](https://github.com/modelcontextprotocol/go-sdk/issues/892)) | Define **one consistent strict default** for the *handler's input object*: reject unknown argument fields; keep A2A envelope metadata **outside** that input schema. Do not globally relax the schema to accommodate protocol fields. |
+| Generated schemas do not express every business constraint; optional, nullable and zero-valued Go fields are easy to confuse | Make requiredness explicit; distinguish absent vs `null` vs zero using pointer/optional conventions and tests. Support small reviewed schema refinements (enums, ranges, lengths), not a broad schema DSL. Validate both schema and domain policy **before** invoking a handler. |
+| Typed MCP tools validate serialized structured output ([server docs](https://github.com/modelcontextprotocol/go-sdk/blob/main/docs/server.md)) | Marshal the returned value, **validate the actual serialized JSON** against output schema, then enforce size/secret-redaction policy **before** building an A2A artifact. Cover `nil`, empty outputs and custom JSON marshalers. Do not return partial/invalid artifacts as success. |
+| MCP separates protocol-level errors from tool-execution errors ([tool error contract](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2026-07-28/server/tools.mdx)) | Keep malformed A2A request/unauthorized-task errors distinct from handler validation/business failures and uncertain execution. Map into **A2A-native** Task states, artifacts and protocol errors. Never expose raw Go errors, panic stack traces or secrets. No MCP `isError` or JSON-RPC envelope on the wire. |
+| Tool descriptions, `readOnlyHint` and similar annotations are *hints*, not enforceable permissions ([MCP annotation guidance](https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/)) | Treat the local `ReadOnly` effect label and descriptive text as reviewed configuration, **not** a sandbox or proof of no writes. Caller/tenant authorization and domain-specific input checks remain the embedding application's responsibility; the SDK enforces its own eligibility/admission boundaries. |
+| Tool registries can change during live sessions ([MCP server registration docs](https://github.com/modelcontextprotocol/go-sdk/blob/main/docs/server.md)) | **Freeze the catalog after startup** in the initial SDK. Reject duplicate IDs and runtime mutation. Any future hot registration needs an explicit versioned/discovery/authorization policy; never quietly swap a handler while Tasks are in flight. |
+
+**Operational detail:** A handler panic must be recovered at the invocation boundary and mapped to a sanitized failed Task while preserving process health where possible; it does **not** roll back changes. Enforce bounded input decoding and output serialization, caller-scoped quotas, concurrent replay protection, and clear acknowledgement of uncertain execution after timeouts. Context cancellation is cooperative, not forced termination. Keep a correlation ID and error classification, but log no secrets or raw payloads by default.
+
+**Avoid overbuilding:** Do not add MCP tool listing, MCP session negotiation, MCP transport, arbitrary schema composition, dynamic function reflection or a third plugin framework. Test the typed registry and handler adapter as pure Go, then verify interoperability using an **independent A2A client**.
+
+### SDK acceptance and value test
+
+A third-party A2A v1 client discovers and invokes a registered read-only Go handler; malformed/denied/plan/ambiguous inputs invoke **zero** handlers. Test schema validation, Task/artifact mapping, duplicate requests, timeouts, oversized results and caller identity isolation. Compare **direct Go invocation** against the embedded A2A path for p50/p95, allocations and integration effort. Compare adoption friction with a small hand-written A2A wrapper or MCP exposure, not just a REST proxy. Run **after S0–S4**; see [PLAN](PLAN.md).
 
 ## 5. Public A2A API (v0.1 proposed)
 
@@ -269,7 +339,7 @@ The URL assembler safely escapes path segments and query strings using a robust 
 - Do not automatically retry business API calls; GET endpoints are expected to be safe, but upstreams may violate HTTP semantics.
 - v0.1 requires explicit local caller-to-task and caller-to-capability authorization; do not imply production-ready tenant-level RBAC, OAuth account linking, or delegated identity.
 
-**Plan semantics:** A2A requests marked `utterroute.mode=plan` may run deterministic selection or, if explicitly configured, optional semantic inference. They make **zero** outbound REST business calls and **zero** outbound A2A target calls. Document data-processing implications for deployers.
+**Plan semantics:** A2A requests marked `utterroute.mode=plan` may run deterministic selection or optional inference. They make **zero** outbound REST business calls, **zero** outbound A2A target calls and (in embedded SDK mode) **zero local handler invocations**. Document data-processing implications for deployers.
 
 **Failure semantics:** If a GET was sent but transport failed before a response, report uncertainty; never claim the backend was not called.
 
@@ -311,13 +381,13 @@ internal/
   a2a/          # inbound protocol and owned Task correlation
   resolver/     # caller eligibility + deterministic-first resolution
   catalog/      # REST operations and registered A2A capabilities
-  targets/      # thin rest.go and a2a.go clients
+  targets/      # thin rest.go and a2a.go clients; optional later local.go adapter
   config/       # fixed destinations, limits, secret references
 examples/{billing-api,research-agent}/
 tests/{integration,evaluation}/
 Dockerfile
 ```
 
-The first Go vertical slice may use fewer packages. Do not implement a generic proxy, multi-agent orchestrator or backend plugin framework merely to satisfy a hypothetical future architecture.
+The first Go vertical slice may use fewer packages. Do not implement a generic proxy, multi-agent orchestrator or backend plugin framework merely to satisfy a hypothetical future architecture. Embedded SDK support is a **post-S4 experiment**, not part of the two-target baseline.
 
 Later releases may consider a secondary custom HTTP interface, streaming/cancel/push, durable tasks and approved writes only after explicit product decisions in the [PRD](PRD.md) and, when warranted, new ADRs. See the [archived HTTP proposal](archive/HTTP_API_FUTURE.md) for historical context.

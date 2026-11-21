@@ -15,16 +15,18 @@ UtterRoute is currently **documentation-only**. Do not claim an endpoint, binary
 
 - UtterRoute is an **A2A-first capability resolver**, **not** an API gateway, reverse proxy, API-management suite or multi-agent orchestrator.
 - Use **Capability**, **Target** and **Resolver** for UtterRoute-owned concepts. `AgentSkill` and Agent Card `skills` are **protocol-defined metadata**, not UtterRoute capabilities or enforceable per-skill privileges.
-- One incoming task selects **one authorized capability**: at most one permitted REST GET **or** one initial approved downstream A2A delegation. Remote-agent continuation of an existing child task is not a second independent selection.
+- One incoming task selects **one authorized capability**: at most one permitted REST GET or one initial approved downstream A2A delegation in the S0–S4 baseline; a **post-S4 embedded Go SDK** may invoke one locally registered `local_handler` instead. Remote-agent continuation of the existing child task is not a second independent selection.
 - Explicit and unambiguous deterministic routing must make **zero Jev/SystemOne calls**. Semantic inference is an optional, separately evaluated extension; when enabled it may return **one eligible ID or abstain**, never a call sequence.
 - Filter by authenticated caller and operator policy **before** choosing a capability. Never trust prompts, client-supplied IDs/URLs, model output, OpenAPI `servers` or Agent Cards as authorization.
 - The REST path is allowlisted GET-only; remote agents may have side effects and require separately approved delegation risk. Do not promise control of a remote agent's internal steps.
 - Task ownership, replay handling, resource bounds, credential isolation, fixed egress, redirect/DNS/SSRF protection and safe refusals remain UtterRoute responsibilities even behind an existing gateway.
-- Do not add generic HTTP proxying, provider-specific API-management plugins, REST writes, workflow chaining, distributed queues or agent credential brokerage as spike work.
+- The proposed `local_handler` is an **in-process Go function**, not a remote Go RPC. Reuse the A2A interface, policy and resolver. Start with reviewed synchronous read-only typed handlers and structured validated arguments; neither Jev nor models fabricate function parameters. Local handler timeouts are cooperative and the embedding application retains its own authorization and data-isolation responsibilities.
+- For embedded handlers, borrow the **typed schema-validation discipline** of the official MCP Go SDK, **not MCP itself**: fail fast on unsupported/duplicate registrations, validate serialized outputs and inputs before execution, reject unknown handler-argument fields, keep A2A metadata separate, and map business/panic errors to sanitized **A2A-native** outcomes. Freeze registrations for the initial SDK; see [ARCH](docs/ARCH.md) and SDK tests in [PLAN](docs/PLAN.md).
+- Do not add generic HTTP proxying, provider-specific API-management plugins, REST writes, workflow chaining, distributed queues, dynamic Go plugin loading, arbitrary function reflection or agent credential brokerage as spike work.
 
 ## Workflow for code changes
 
-1. Work from the **current PLAN slice**. Prefer one small, reviewed vertical slice with acceptance tests over abstract frameworks.
+1. Work from the **current PLAN slice**. Finish S0–S4 before taking on SDK-0–SDK-3 or optional semantic evaluation, subject to the S4 continue/library/stop decision. Prefer one small, reviewed vertical slice with acceptance tests over abstract frameworks.
 2. Keep the Go implementation simple: official pinned `a2a-go/v2` SDK, standard `net/http`, constrained `kin-openapi`, and narrow typed interfaces only when needed. Pin exact versions in the first code PR.
 3. Keep A2A SDK types at the inbound/outbound adapters; resolver, catalog and validation should not depend on A2A wire models.
 4. Test authorized success, abstention/clarification, wrong caller, duplicate/concurrent messages, slow/oversized targets, uncertain remote delivery and zero downstream execution on denial/plan mode.

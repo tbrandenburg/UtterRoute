@@ -7,9 +7,9 @@
 
 ## 1. Summary
 
-UtterRoute is a self-hostable, MIT-licensed **A2A-first capability resolver** for existing REST APIs **and independently running A2A agents**. It registers operator-approved capabilities, selects one that an authenticated caller is allowed to use, and delegates through a small protocol-specific adapter. It is **not** a general API gateway, reverse proxy, agent runtime or API-management product.
+UtterRoute is a self-hostable, MIT-licensed **A2A-first capability resolver** for existing REST APIs **and independently running A2A agents**, with a proposed **embedded Go SDK** for exposing local functions in a later experiment. It registers operator-approved capabilities, selects one that an authenticated caller is allowed to use, and delegates through a small protocol-specific adapter. It is **not** a general API gateway, reverse proxy, agent runtime or API-management product.
 
-**Promise:** *Discover capabilities, resolve intent, dispatch safely.* A2A messages in; one approved REST operation or downstream A2A agent task out.
+**Promise:** *Discover capabilities, resolve intent, dispatch safely.* A2A messages in; one authorized capability out. The v0.1 baseline dispatches a REST GET or remote A2A delegation; an opt-in embedded Go SDK could later dispatch one registered in-process handler.
 
 **Fast by default:** When an eligible capability is explicitly selected or determined by an unambiguous configured rule, UtterRoute dispatches **without inference**. For ambiguous intent, Jev is the first **optional** semantic selector; SystemOne may be compared later. Without a suitable configured router, unresolved ambiguity leads to clarification/abstention. A TypeSafe key is **not required** for deterministic usage.
 
@@ -35,7 +35,7 @@ An A2A client can invoke a known agent, and a conventional client can invoke a k
 
 1. **Capability resolution, not generic proxying:** Optimize discovery, selection and safe one-target dispatch; use existing gateways for infrastructure.
 2. **Deterministic first:** Explicit authorized selection and unambiguous rules bypass Jev/SystemOne; ambiguous input abstains or invokes an **optional** configured semantic selector.
-3. **One target per task:** A single permitted REST GET *or* one approved A2A delegation. No fan-out, write-capable REST operations or multi-agent orchestration.
+3. **One target per task:** A single permitted REST GET *or* one approved A2A delegation in the baseline; a later embedded SDK may invoke one local handler instead. No fan-out, write-capable REST operations or multi-agent orchestration.
 4. **Authorization before selection:** Target metadata, caller hints and model outputs are untrusted; policy filters the candidate set and validates the decision.
 5. **Honest downstream semantics:** REST is read-only in the first release. A2A agents may have side effects and persistent tasks; operator policy must explicitly approve their registered capabilities and classify delegation risks.
 6. **Measurable benefit:** Compare against direct invocation and simple deterministic dispatch for overhead, accuracy, abstention and integration effort.
@@ -64,6 +64,7 @@ An A2A client can invoke a known agent, and a conventional client can invoke a k
 
 ### Deferred / potential v0.2 features
 
+- **Embedded Go SDK / `local_handler` target (post-baseline experiment):** A Go application may register an approved, typed, synchronous, read-only function as a capability and serve the same A2A interface in-process. This is a third **integration/target kind**, not a third wire protocol or remotely callable Go function. The S0–S4 two-target spike remains unchanged; see [PLAN](PLAN.md) for the separate SDK evaluation.
 - **Optional Jev semantic selection:** First supported inference adapter and held-out benchmark, added only if deterministic routing cannot resolve the request safely. Its use must be opt-in and cannot be required for direct selection.
 - **Optional SystemOne HTTP adapter** if the Jev comparative evaluation justifies it; no bundled inference runtime.
 - **Secondary native HTTP API:** `POST /v1/execute` using the same resolver, subject to demonstrated user demand.
@@ -76,6 +77,7 @@ An A2A client can invoke a known agent, and a conventional client can invoke a k
 - **REST writes:** API `POST`/`PUT`/`PATCH`/`DELETE` execution, general JSON body synthesis, transaction rollback.
 - Auto-discovery of arbitrary remote agents or caller-supplied URLs; blind trust in Agent Cards, model descriptions or downstream side-effect claims.
 - Streaming, push/cancel, durable multiworker task queues, additional A2A protocol bindings, MCP/GraphQL ingestion or hosted multitenant control plane.
+- Arbitrary reflection over exported Go methods, dynamic code loading, automatically generated business authorization, implicit model-driven extraction of any Go struct, and cross-process function calls without an explicit A2A/REST adapter.
 - Claims of guaranteed routing accuracy, zero gateway overhead, general agent correctness or safe autonomous behavior of a remote agent.
 
 ## 5. Core experience
@@ -145,6 +147,20 @@ The journeys below describe **UtterRoute-owned responsibilities** and the bounda
 
 **Acceptance:** UtterRoute generates **no executable multistep plan**, no second capability selection based on intermediate results, no cross-target data passing and no unapproved REST writes. A downstream A2A agent may have its own internal workflow, but those actions remain outside UtterRoute's orchestration and authorization guarantees.
 
+#### Journey 6 — Go application embeds an A2A-facing capability resolver (post-baseline SDK experiment)
+
+**As a** Go developer, **I want** to register an existing typed function as an UtterRoute capability **so that** other A2A clients can discover and invoke my application's approved functionality without writing a separate HTTP or A2A adapter.
+
+1. The Go application embeds the UtterRoute library, registers a local `orders.lookup` capability with a reviewed description, caller policy, read-only effect classification and a typed handler (`context.Context`, input struct → output struct/error).
+2. The application exposes the **same A2A v1 HTTP+JSON interface** used by standalone UtterRoute; no Go-specific network RPC or new wire protocol is introduced.
+3. A caller selects an eligible explicit capability ID or unambiguous configured rule. An optional semantic selector, if separately enabled and evaluated, may choose **one** eligible capability ID or abstain—not produce arguments or a call sequence.
+4. The SDK binds **caller-provided structured arguments** or a developer-provided deterministic parser, validates the typed input and rechecks authorization before invoking **one in-process handler**.
+5. The handler returns a bounded result as an A2A Task artifact. Missing/ambiguous input leads to clarification or refusal, not synthesized arbitrary Go values.
+
+**Acceptance:** A third-party A2A client invokes one registered read-only Go handler without writing a bespoke A2A server. No code executes for unauthorized capability/arguments, plan-only mode or ambiguous intent; explicit routing makes zero inference calls. The handler runs only **in the embedding process** and receives a deadline-bound context, but cancellation is cooperative and cannot forcibly stop arbitrary Go code. Compare direct Go calls against embedded UtterRoute latency, allocations and developer setup effort.
+
+**Deployment distinction:** Standalone UtterRoute cannot magically invoke functions in another process. A separate Go service may embed the SDK and expose its own A2A endpoint, which standalone UtterRoute can later use as a normal `a2a_agent` target. This is not a requirement of the original S0–S4 spike.
+
 #### Cross-journey release guardrails
 
 | Failure case | Expected outcome |
@@ -158,7 +174,7 @@ The journeys below describe **UtterRoute-owned responsibilities** and the bounda
 | Remote agent requests out-of-band authorization | Report unsupported/authorization-required handling; no credential-broker workflow in v0.1 |
 | Downstream calls UtterRoute again, or client polls excessively | Enforce configured delegation/loop limits, task TTL and bounded polling; no recursive unbounded work |
 
-**Scope rule:** One **selected capability** per incoming task: either one allowed REST GET or one initial approved A2A delegation. Multiple protocol messages for *the same* child task do **not** make UtterRoute a workflow orchestrator. Jev's only permitted decision, if enabled, is **one eligible capability ID or abstention**, never a sequence of calls.
+**Scope rule:** One **selected capability** per incoming task: one allowed REST GET or one initial approved A2A delegation in the baseline; one in-process read-only `local_handler` in the later embedded-SDK mode. Multiple protocol messages for *the same* child task do **not** make UtterRoute a workflow orchestrator. Jev's only permitted decision, if enabled, is **one eligible capability ID or abstention**, never a sequence of calls.
 
 
 
@@ -189,7 +205,7 @@ These are **hypotheses, not measured results**. The deterministic p95 goal is an
 
 ## 8. Current validation milestone
 
-The authoritative **S0–S4 execution checklist, scope guardrails, fixtures, benchmarks and stop/go decision** are in [PLAN.md](PLAN.md). PRD tracks the *outcome*, not a second implementation checklist.
+The authoritative **S0–S4 execution checklist, scope guardrails, fixtures, benchmarks and stop/go decision** are in [PLAN.md](PLAN.md). PRD tracks the *outcome*, not a second implementation checklist. The same plan also records a **separate, optional post-S4 Go SDK experiment**, which must not delay the two-target baseline.
 
 For v0.1, validate a Go A2A service with one registered billing REST GET capability and one independently running research A2A agent. Both must be invocable through a third-party A2A client, with caller isolation, no unintended target calls, safe refusal and **zero inference dependency** for explicit/deterministic selection.
 
@@ -217,6 +233,7 @@ For v0.1, validate a Go A2A service with one registered billing REST GET capabil
 - Is one registered REST capability plus one remote A2A agent useful enough to justify a standalone resolver?
 - Does registration reduce integration work versus directly invoking known targets or writing a small A2A wrapper?
 - Are safe abstention and policy-filtered discovery valuable enough to justify the extra hop?
+- Would an embedded Go SDK reduce A2A integration work for existing Go services compared with directly exposing MCP or writing a trivial A2A wrapper?
 - Should optional semantic selection be adopted only after a held-out benchmark proves improved outcomes?
 
 The SDK/toolchain pin, schema subset, plan redaction, local identity policy and task-store implementation are **technical choices**, owned by [ARCH](ARCH.md) and the active [PLAN](PLAN.md), not repeated here.
