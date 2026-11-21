@@ -14,7 +14,7 @@ UtterRoute is a **protocol-facing A2A capability resolver**, not a general HTTP 
 1. **Capability eligibility first.** Operator configuration and authenticated caller policy decide which capabilities can be considered. Model decisions, Agent Cards, request hints and prompts never grant permission.
 2. **One target per incoming task.** For a REST target: at most one allowlisted GET, validated origin and parameters. For an A2A target: at most one permitted outbound `SendMessage` initiating a child task, with bounded follow-up retrieval/clarification. Do not fan out or chain targets.
 3. **No compulsory inference.** Explicit authorized IDs and unambiguous configured rules resolve deterministically with zero Jev/SystemOne calls. If the request remains ambiguous and no optional semantic selector is enabled, abstain/clarify.
-4. **A2A agents are not inherently read-only.** Explicitly approve target agents and registered capabilities and their side-effect risk. Unknown-effect delegated skills are denied by default in the controlled v0.1 demo. The REST GET-only guarantee does not apply inside a remote agent.
+4. **A2A agents are not inherently read-only.** Explicitly approve target agents and registered capabilities and their side-effect risk. Unknown-effect remote-agent delegations are denied by default in the controlled v0.1 demo. The REST GET-only guarantee does not apply inside a remote agent.
 5. **No untrusted destinations.** Only configured, trusted REST origins and registered A2A agent URLs. Model output, OpenAPI `servers`, Agent Card metadata and the user's instruction cannot introduce targets.
 6. **Plan-only means no downstream target invocation:** `utterroute.mode=plan` may resolve a capability (including an optional inference call if configured) but must call **neither** the REST API **nor** the remote A2A agent.
 7. **Task isolation and replay resistance:** Caller identity scopes Task retrieval/continuation and downstream task ID correlation. Duplicates do not trigger another dispatch; bounded storage, deadlines and result size are required.
@@ -106,7 +106,7 @@ logging:
   include_response_body: false
 ```
 
-Config is a **design sketch, not an executable schema**. Remote A2A agents need explicit trusted hosts and skill approvals; a discovered Agent Card alone does not grant authorization. The local example's HTTP loopback is not a production pattern. Optional model keys and upstream credentials come from the environment/secret management, never incoming messages. Default to loopback; reuse existing ingress/API gateways for public TLS, WAF/DDoS and general rate limits. Public deployment is **not supported by the v0.1 demo** without independent application policy review and appropriate external controls.
+Config is a **design sketch, not an executable schema**. Remote A2A agents need explicit trusted hosts and capability approvals; a discovered Agent Card alone does not grant authorization. The local example's HTTP loopback is not a production pattern. Optional model keys and upstream credentials come from the environment/secret management, never incoming messages. Default to loopback; reuse existing ingress/API gateways for public TLS, WAF/DDoS and general rate limits. Public deployment is **not supported by the v0.1 demo** without independent application policy review and appropriate external controls.
 
 ## 4. OpenAPI ingestion contract
 
@@ -138,12 +138,12 @@ The **only business-facing v0.1 protocol is A2A v1 HTTP+JSON**, consistent with 
 ### `GET /.well-known/agent-card.json`
 
 Return a valid A2A Agent Card declaring:
-- `name`, `description`, `version`, supported input/output modes, and a truthful, bounded A2A Agent Card `skills` entry describing the resolver;
+- `name`, `description`, `version`, supported input/output modes, and truthful, bounded protocol-defined `skills` entries describing the resolver;
 - `supportedInterfaces` with `protocolBinding: "HTTP+JSON"`, the declared A2A protocol version and an externally configured absolute HTTPS URL in deployed environments;
 - an accurate authentication/security scheme; no secret connection names or upstream credentials;
 - optional capabilities such as `streaming`, `pushNotifications`, and `extendedAgentCard` set false/omitted until actually supported.
 
-Agent Card discovery does not grant access to tasks or upstream APIs. The protocol-defined Agent Card `skills` entries are descriptions, not authority to select arbitrary REST operations or constrain remote-agent behavior. For v0.1, one operator-configured connection per deployed agent is enough.
+Agent Card discovery does not grant access to tasks or upstream APIs. The protocol-defined Agent Card `skills` entries are descriptions, not authority to select arbitrary REST operations or constrain remote-agent behavior. For the v0.1 demo, one configured REST operation and one configured remote A2A agent target are enough.
 
 ### `POST /message:send` — A2A `SendMessage`
 
