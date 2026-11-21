@@ -97,12 +97,15 @@ The custom `POST /v1/execute` endpoint, API writes, autonomous multistep workflo
 - **[Product requirements — v0.1](docs/PRD.md):** Audience, problems, scope, user stories, release criteria and risks.
 - **[Technical specification — v0.1](docs/SPEC.md):** A2A Agent Card, SendMessage, tasks, artifacts, importer constraints, policy, security and testing.
 - **[ADR-001 — A2A-first interface](docs/ADR-001-A2A-FIRST.md):** Why A2A ships first, task lifecycle, wire binding and scope boundaries.
+- **[ADR-002 — Go implementation decision](docs/ADR-002-GO-V0.1.md):** Why Go over Rust for v0.1, proposed SDK/tooling, alternatives, and implementation sequence.
 - **[Future native HTTP design](docs/HTTP_API_FUTURE.md):** Archived custom `POST /v1/execute` proposal, deferred to v0.2+.
 - **[Reusable SystemOne patterns](docs/SYSTEMONE_PATTERNS.md):** Upstream architecture references, practical reuse map, compatibility limits, tests, and deferred integration.
 
 The docs are proposals open for review. Examples above describe intended interfaces, not currently working APIs.
 
 ## Initial development roadmap
+
+**Implementation direction:** [Go](https://go.dev/) with the official [A2A Go SDK v2](https://github.com/a2aproject/a2a-go) and [kin-openapi](https://github.com/getkin/kin-openapi), per [ADR-002](docs/ADR-002-GO-V0.1.md). This is a documentation decision; no Go application or dependencies have been added yet.
 
 1. **A2A first:** Pinned A2A v1 contract/SDK, Agent Card, `SendMessage`, `GetTask`, and independent-client conformance fixtures.
 2. **Task foundation:** Bounded task store, caller ownership, context/task continuity, input-required clarification and replay/TTL tests.
