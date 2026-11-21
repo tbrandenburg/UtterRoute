@@ -9,7 +9,7 @@
 
 [SystemOne](https://github.com/codesoda/systemone) provides a Jev-compatible HTTP server and interchangeable inference backends for typed decisions (Choice, Noul, Score). It does **not** import OpenAPI catalogs, resolve API business entities, check API permissions, or execute arbitrary REST operations. Those remain UtterRoute's responsibilities.
 
-We can **reuse design patterns** from SystemOne without copying implementation code, embedding Rust crates, or making it a dependency. The first UtterRoute release remains an **A2A-first**, Jev-first, single-operation, allowlisted-GET gateway as documented in the [PRD](PRD.md) and [ADR-002](ADR-002-GO-V0.1.md).
+We can **reuse design patterns** from SystemOne without copying implementation code, embedding Rust crates, or making it a dependency. UtterRoute is now defined as an **A2A-first capability resolver** for an approved REST GET **or** remote A2A skill, with explicit/deterministic routing by default. Jev and SystemOne are **optional** semantic selection providers, not mandatory hops; see the [PRD](PRD.md) and [ADR-003](ADR-003-CAPABILITY-RESOLVER.md).
 
 ## Patterns worth adopting
 
@@ -117,13 +117,13 @@ A successful HTTP request or passing SDK smoke test proves **wire compatibility*
 
 ## Recommended adoption sequence
 
-1. **Now (foundation):** Define neutral `Router` types, configuration/secret boundaries, response validation, error mapping and evaluation fixtures. Keep a deterministic fake router for integration tests.
-2. **v0.1 baseline:** Implement a direct hosted Jev adapter and the read-only single-operation `plan`/`execute` path. Verify refusal and security invariants.
-3. **Optional follow-up:** Add an explicit `systemone-http` adapter as a separately configured endpoint. Reuse the Jev-compatible schema, and contract-test it against a pinned SystemOne release.
+1. **Now (foundation):** Define a capability catalog for REST and A2A skills, deterministic-first resolver types, configuration/secret boundaries and evaluation fixtures. Keep a fake router for integration tests; require zero inference on direct selection.
+2. **v0.1 baseline:** Implement a direct/deterministic REST GET and approved remote A2A skill path with one target per task, A2A Task/artifact mapping and no TypeSafe key requirement.
+3. **Optional semantic experiment:** Add direct Jev as the first optional selector only if it improves ambiguous resolution; later consider explicit `systemone-http` against a pinned SystemOne release.
 4. **Comparative evaluation:** Run the same held-out UtterRoute requests through direct Jev and selected SystemOne backends. Measure end-to-end correctness, abstention rate, request latency, token/usage costs and unintended business calls; decide whether offering this optional backend is worthwhile.
 
 ## Attribution and scope
 
 SystemOne is independently developed by codesoda and [MIT-licensed](https://github.com/codesoda/systemone/blob/main/LICENSE). This document links to its patterns but does not copy source code. UtterRoute is not affiliated with or endorsed by SystemOne, TypeSafe AI or the other backend providers. Downloaded model artifacts and hosted services retain their own terms.
 
-**Decision:** Reference reusable patterns now; make SystemOne interoperability an optional, separately validated future implementation—not a mandatory v0.1 dependency.
+**Decision:** Reference reusable patterns now; make SystemOne interoperability an optional, separately validated future implementation—not a mandatory v0.1 dependency. The initial resolver fast path requires **zero inference calls** for explicitly authorized, deterministic capability selection.
