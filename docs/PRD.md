@@ -207,7 +207,7 @@ These are **hypotheses, not measured results**. The deterministic p95 goal is an
 
 ## 8. Milestones (A2A first, resolver scope)
 
-**The execution checklist and stop/go criteria live in [Two-target validation spike](SPIKE_PLAN.md).** The spike is deliberately narrower than the full proposed v0.1 release: it validates two registered targets, a zero-inference deterministic resolver, essential trust boundaries and real benchmark evidence before adding optional model routing.
+**The execution checklist and stop/go criteria live in [Two-target validation spike](PLAN.md).** The spike is deliberately narrower than the full proposed v0.1 release: it validates two registered targets, a zero-inference deterministic resolver, essential trust boundaries and real benchmark evidence before adding optional model routing.
 
 **Implement in this order, as small reviewable PRs:**
 
@@ -247,6 +247,6 @@ These are **hypotheses, not measured results**. The deterministic p95 goal is an
 - Default routing-confidence policy; must be calibrated from fixtures rather than treated as a probability of business success.
 - Which authenticated local development policy and token mechanism to use by default for A2A task isolation.
 
-**Spike exit gate:** The [two-target spike](SPIKE_PLAN.md) must publish reproducible direct-vs-UtterRoute measurements and a go/narrow/stop recommendation. This is an experiment outcome, **not** a claim that adoption or subsecond latency has been proven.
+**Spike exit gate:** The [two-target spike](PLAN.md) must publish reproducible direct-vs-UtterRoute measurements and a go/narrow/stop recommendation. This is an experiment outcome, **not** a claim that adoption or subsecond latency has been proven.
 
 **Definition of done:** An independent A2A client discovers and invokes **one registered REST GET** and **one approved existing A2A agent**, receives caller-owned Tasks/artifacts, observes an input-required continuation and correct abstention; **explicit routing makes zero model calls**, disallowed requests make zero downstream calls, and no custom HTTP/API-management system is required. Benchmarks compare direct vs resolved dispatch.
