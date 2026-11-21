@@ -82,6 +82,38 @@ Run all three execution paths on the **same configured targets**:
 
 **Provisional hypothesis:** under **10 ms incremental p95 in-process** deterministic resolver processing, *excluding* ingress, network and downstream execution. It is **not** a guaranteed benchmark or a blanket end-to-end latency target.
 
+## Follow-up experiment: embedded Go SDK (`local_handler`; after S4)
+
+**Not part of S0–S4 and not a prerequisite for the two-target decision gate.** Evaluate this separately only after the shared resolver, A2A server boundary and basic safety gates exist. If the S4 decision is to narrow/stop, reconsider whether an SDK-only library is the better product instead of automatically growing the standalone service.
+
+**Question:** Does in-process typed function registration make an existing Go application meaningfully easier to expose to A2A callers than writing a small A2A wrapper or exposing functions via MCP?
+
+### SDK-0 — Reuse the existing A2A core in-process
+
+**Deliver:** A small importable Go package allowing a host application to mount UtterRoute's A2A handler and register one local `orders.lookup` capability. Keep the same catalog, caller policy, resolver and Task/Artifact lifecycle as the standalone service. Do **not** create a third network protocol.
+
+**Prove:** An independent A2A client can discover and invoke the embedded Go service. A standalone UtterRoute may view it as a normal remote `a2a_agent` target, never as a cross-process `local_handler`. No new hosted model requirement.
+
+### SDK-1 — One typed, read-only function and safe arguments
+
+**Deliver:** A minimal registration API for a function conceptually shaped `func(context.Context, Input) (Output, error)`; stable capability ID, reviewed description, caller eligibility and effect policy. Support **structured caller-supplied input** with typed/schema validation; a developer-defined deterministic parser is optional after that baseline.
+
+**Prove:** Explicit/deterministic routing selects the handler with **zero inference calls**. Missing/ambiguous/invalid data produces clarification/refusal with **zero handler calls**. No arbitrary method reflection, model-invented struct values, remote code registration or generated function-call sequences. Jev remains optional and can select one ID/abstain only.
+
+### SDK-2 — Security and local execution limits
+
+**Deliver:** Caller authorization, input/output bounds, cooperative context deadline, concurrency cap, duplicate-task prevention and safe A2A artifact/error mapping.
+
+**Prove:** Plan-only and unauthorized requests execute **zero** handlers; replay cannot execute the same admitted task twice. Slow and oversized handlers are bounded at the SDK boundary, with the explicit limitation that cancellation cannot forcibly kill a running Go function. Initial SDK supports **reviewed read-only synchronous functions only**; developers remain responsible for side effects, credentials and tenant data isolation in the host process.
+
+### SDK-3 — Compare and decide
+
+**Measure:** Direct Go function invocation vs embedded A2A invocation (p50/p95, allocations, overhead); integration steps to expose one function through the SDK vs a hand-written A2A wrapper and a comparable MCP tool; correctness/abstention and no-unwanted-execution rates.
+
+**Exit gate:** Keep `local_handler` only if one registered function can be exposed via an independent A2A client with less integration complexity and acceptable measurable overhead. If the SDK merely wraps a function with no selection or interoperability benefit, narrow or drop it. Do not bundle semantic extraction or multi-agent orchestration merely to make the SDK seem useful.
+
+**Shared invariant:** A single Task invokes **one authorized capability**—one REST GET, one initial remote A2A delegation, **or (embedded mode) one local Go handler**. No fan-out, chaining or executable model plans.
+
 ## Definition of done for the spike
 
 - [ ] Pinned, independently verifiable A2A v1 HTTP+JSON server and client behavior (`Agent Card`, `SendMessage`, `GetTask`)
@@ -98,9 +130,9 @@ Run all three execution paths on the **same configured targets**:
 
 **Included in the spike:** a minimal Go A2A adapter; one operator-configured OpenAPI GET; one trusted A2A agent; basic catalog/eligibility; explicit/deterministic resolver; tiny REST/A2A target clients; bounded in-memory Task store; required safety/benchmark tests.
 
-**Deferred beyond the spike:** hosted Jev or SystemOne adapter; open-ended natural-language routing; broad OpenAPI features; generic proxying, WAF/TLS/API-management tooling, multi-agent plans, REST writes, agent OAuth brokerage, persistent/distributed task queue, arbitrary long-running recovery, A2A streaming/push/cancellation and custom `/v1/execute`.
+**Deferred beyond the S0–S4 spike:** embedded Go SDK / `local_handler` (separate SDK-0–SDK-3 evaluation above); hosted Jev or SystemOne adapter; open-ended natural-language routing; broad OpenAPI features; generic proxying, WAF/TLS/API-management tooling, multi-agent plans, REST writes, agent OAuth brokerage, persistent/distributed task queue, arbitrary long-running recovery, A2A streaming/push/cancellation and custom `/v1/execute`.
 
-**Jev experiment only after S4:** On a labeled set of genuinely ambiguous requests, compare safe abstention/direct rules vs optional semantic resolution for correct selection, unsafe dispatch rate, p50/p95 and provider cost. Jev may choose **one eligible capability ID or abstain**; it may never choose a downstream call sequence. Implement only if the measured additional value is persuasive.
+**Optional Jev experiment only after S4:** On a labeled set of genuinely ambiguous requests, compare safe abstention/direct rules vs optional semantic resolution for correct selection, unsafe dispatch rate, p50/p95 and provider cost. Jev may choose **one eligible capability ID or abstain**; it may never choose a downstream call sequence. Implement only if the measured additional value is persuasive.
 
 ## Suggested small Go layout
 
