@@ -1,7 +1,9 @@
 # Future native HTTP interface (secondary; not in v0.1)
 
+> **Archived reference, not current implementation scope.** Use [PRD](../PRD.md), [ARCH](../ARCH.md), and [PLAN](../PLAN.md) for the active decisions and implementation steps.
+
 **Status:** Deferred, non-normative draft for v0.2 or later  
-**Related:** [A2A-first ADR](ADR-001-A2A-FIRST.md) · [v0.1 A2A SPEC](SPEC.md) · [PRD](PRD.md)
+**Related:** [A2A-first ADR](../adr/ADR-001-A2A-FIRST.md) · [v0.1 A2A SPEC](../ARCH.md) · [PRD](../PRD.md)
 
 This preserves the initial proposal for `POST /v1/execute` so the community can review a future **optional convenience HTTP interface**. **UtterRoute v0.1 is A2A-first:** it implements an A2A Agent Card, `SendMessage`, and `GetTask` before any custom API. This draft is **not** an implemented API, a v0.1 deliverable, or an alternative authorization path.
 

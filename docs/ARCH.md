@@ -1,9 +1,16 @@
-# UtterRoute v0.1 — Technical Specification
+# UtterRoute — Architecture and Technical Contract
+
+**Status:** Proposed architecture; the repository remains documentation-only until a code PR lands.  
+**Authority:** Technical contract and invariants live here. Product scope and user journeys live in [PRD](PRD.md); active implementation slices and exit gates live in [PLAN](PLAN.md). Decision rationale is retained in [ADRs](adr/ADR-003-CAPABILITY-RESOLVER.md); reference designs are in [archive](archive/SYSTEMONE_PATTERNS.md).
+
+**Working vocabulary:** *Capability* = registered authorized unit of work; *Target* = approved REST API or remote A2A agent; *Resolver* = eligibility-filtered selector. The A2A wire protocol's `AgentSkill`/`skills` fields are descriptive metadata, not selectable, enforceable UtterRoute permissions.
+
+
 
 **Status:** Proposed, not implemented  
 **Version:** 0.1-draft  
 **Date:** 2026-11-21  
-**Product scope:** [PRD.md](PRD.md) · [A2A-first ADR](ADR-001-A2A-FIRST.md) · [Capability resolver ADR-003](ADR-003-CAPABILITY-RESOLVER.md)
+**Product scope:** [PRD.md](PRD.md) · [A2A-first ADR](adr/ADR-001-A2A-FIRST.md) · [Capability resolver ADR-003](adr/ADR-003-CAPABILITY-RESOLVER.md)
 
 ## 1. Architecture and invariants
 
@@ -59,7 +66,7 @@ Prefer a small Go service with plain interfaces and constructors, not a generic 
 
 ## 3. Configuration and runtime
 
-**Proposed reference implementation:** **Go 1.26+** with official [`a2a-go/v2`](https://github.com/a2aproject/a2a-go) for A2A v1 HTTP+JSON (`a2asrv`/REST handler), standard `net/http` for serving and outbound clients, and [`kin-openapi`](https://github.com/getkin/kin-openapi) for a constrained OpenAPI 3.0/3.1 importer. See [ADR-002](ADR-002-GO-V0.1.md) for the language decision, Rust trade-offs, task-store caveats and phased PRs. Pin a tested SDK version and Go 1.26+ toolchain in the **first implementation PR**; these documents are not runnable code and no SDK is installed yet.
+**Proposed reference implementation:** **Go 1.26+** with official [`a2a-go/v2`](https://github.com/a2aproject/a2a-go) for A2A v1 HTTP+JSON (`a2asrv`/REST handler), standard `net/http` for serving and outbound clients, and [`kin-openapi`](https://github.com/getkin/kin-openapi) for a constrained OpenAPI 3.0/3.1 importer. See [ADR-002](adr/ADR-002-GO-V0.1.md) for the language decision, Rust trade-offs, task-store caveats and phased PRs. Pin a tested SDK version and Go 1.26+ toolchain in the **first implementation PR**; these documents are not runnable code and no SDK is installed yet.
 
 Configuration sketch (illustrative, not executable today):
 
@@ -133,7 +140,7 @@ A downstream `a2a_agent` capability is **not** an OpenAPI operation or a remotel
 
 ## 5. Public A2A API (v0.1 proposed)
 
-The **only business-facing v0.1 protocol is A2A v1 HTTP+JSON**, consistent with the [A2A specification](https://a2a-protocol.org/v1.0.0/specification/) and [ADR-001](ADR-001-A2A-FIRST.md). This binding uses normal HTTP methods and A2A JSON bodies; it is not the JSON-RPC binding.
+The **only business-facing v0.1 protocol is A2A v1 HTTP+JSON**, consistent with the [A2A specification](https://a2a-protocol.org/v1.0.0/specification/) and [ADR-001](adr/ADR-001-A2A-FIRST.md). This binding uses normal HTTP methods and A2A JSON bodies; it is not the JSON-RPC binding.
 
 ### `GET /.well-known/agent-card.json`
 
@@ -199,7 +206,7 @@ For an accepted task, represent expected application outcomes by Task state and/
 
 ### Deferred custom native HTTP adapter
 
-`POST /v1/execute` is **not part of v0.1**. The old request/response draft is retained for potential **v0.2+** work at [HTTP_API_FUTURE.md](HTTP_API_FUTURE.md); it must call the same core service and must not bypass A2A-era policy/validation. No extra proprietary HTTP endpoint is needed to pass v0.1 acceptance.
+`POST /v1/execute` is **not part of v0.1**. The old request/response draft is retained for potential **v0.2+** work at [HTTP_API_FUTURE.md](archive/HTTP_API_FUTURE.md); it must call the same core service and must not bypass A2A-era policy/validation. No extra proprietary HTTP endpoint is needed to pass v0.1 acceptance.
 
 
 ## 6. Capability selection logic (deterministic first)
@@ -213,35 +220,13 @@ For an accepted task, represent expected application outcomes by Task state and/
 
 The fast path is the product baseline. Jev is the **first planned optional semantic adapter**, not a required `SendMessage` dependency. If no model is configured, direct and deterministic resolution still operate. Semantic thresholds require labeled evaluations, not universal confidence assumptions.
 
-### Optional SystemOne interoperability (reference; transport independent of A2A)
+### Optional semantic provider contract
 
-[SystemOne](https://github.com/codesoda/systemone) provides an independent, MIT-licensed Jev-compatible decision server across multiple local/hosted backends. For a **future optional adapter**, UtterRoute could call its `POST /v1/systemone` over HTTP using the [published compatible wire schema](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json). SystemOne is **not** an API/tool executor; OpenAPI operation filtering, parameter validation, destination policy and upstream execution remain inside UtterRoute.
+Inference is **not** in the required execution path. A future Jev or SystemOne adapter may choose **one eligible capability ID or abstention**; it cannot generate URLs, methods, credentials or a sequence of downstream calls. Revalidate the chosen ID against the caller-filtered catalog and fail closed on provider errors, invalid output and uncertain results.
 
-### Reusable upstream patterns for implementation
+**Candidate limits:** The published SystemOne/Jev-compatible Choice subset permits at most 16 criteria per question; reserve one for `none_of_the_above` (at most 15 real candidates). Do not silently truncate a larger catalog. Stop/clarify or add evaluated deterministic preselection in a future implementation. Model score semantics, backends and licenses vary; never imply SystemOne's local weights are hosted Jev or that SDK compatibility proves decision accuracy.
 
-SystemOne's design provides several patterns we can adapt **without adding SystemOne as a dependency**:
-
-| Pattern to reuse | How it maps to UtterRoute | Upstream source |
-| --- | --- | --- |
-| Typed provider-neutral decision contract | Keep `Router` adapters replaceable; return only eligible operation IDs or abstain | [DecisionHost](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/host.rs) |
-| Capability-declared inference limits | Check primitives, candidate count, model identity and score semantics before routing | [Capabilities](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/capabilities.rs) |
-| Strict Jev-compatible wire contracts | Validate selection responses and reject unknown operation IDs | [Wire schema](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json) |
-| Bounded, fail-closed service and transport | Use explicit timeouts/admission, fixed origins, no redirects, no silent retries | [Registry](https://github.com/codesoda/systemone/blob/main/crates/systemone-http/src/registry.rs) · [Remote transport](https://github.com/codesoda/systemone/blob/main/crates/systemone-remote/src/transport.rs) |
-| Compatibility tests **versus** decision quality | Test model API conformance separately from operation/argument correctness and abstention | [SDK smoke](https://github.com/codesoda/systemone/blob/main/compat/sdk-js/smoke.mjs) · [Evaluation](https://github.com/codesoda/systemone/blob/main/docs/gliner2-evaluation.md) |
-
-See [Reusable SystemOne patterns](SYSTEMONE_PATTERNS.md) for verified source links, an illustrative Choice request, implementation priorities, security boundaries, and acceptance tests. This is a **design reference**, not an assertion that UtterRoute or its Jev adapter currently supports SystemOne.
-
-Design considerations if that adapter is implemented:
-
-- Keep a single internal `Router` interface. Map allowed operation IDs and human-readable descriptions to a `choice` question, with an explicit no-match candidate. Parse the selected ID only; never accept generated target URLs or authorization data.
-- The documented SystemOne Choice subset accepts **at most 16 options per question**. Preserve one for `none_of_the_above`, leaving at most 15 operation candidates. If a catalog is larger, add evaluated deterministic preselection or refuse routing; **do not silently drop eligible operations**. Candidate narrowing remains outside the v0.1 P0 scope.
-- Send state as compact plain text where possible; its local OpenJev backend rejects floating-point JSON state, while other backends may accept it. Do not assume the wire subset matches every TypeSafe input.
-- Run SystemOne as a separately configured process/service (for example port 8090 to avoid UtterRoute's proposed 8080); require an explicit trusted base URL and enforce network policy. Default loopback is suitable for development, not public unauthenticated deployment.
-- Model/backends have different prediction quality, semantics, accuracy and calibration. A Jev-compatible response is **not** evidence of identical decisions. Configure the runtime/backend explicitly, pin tested versions, log sanitized backend identity, and **never** silently fall back from local inference to a hosted provider.
-- Its local backends use separate model weights with independent license terms. SystemOne's MIT license covers its project code, not downloaded weights or hosted inference services.
-- Add contract tests against [the published HTTP schema](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json), plus UtterRoute end-to-end tests for abstention and no-upstream-call behavior. Benchmark candidate counts, accuracy, refusal rate, latency and cost against direct hosted Jev before selecting a default.
-
-**Current decision:** SystemOne remains a reference or future optional router. Neither SystemOne nor hosted Jev is required for the deterministic v0.1 baseline. If semantic selection is added, evaluate direct Jev before treating SystemOne as an optional runtime. Never embed a required inference server in the fast path.
+Detailed provider examples, transport limits and comparative evaluation notes are **reference-only**, archived at [SystemOne patterns](archive/SYSTEMONE_PATTERNS.md). They do not expand the v0.1 spike or make a model key mandatory.
 
 ## 7. Argument extraction and validation
 
@@ -294,62 +279,45 @@ Emit structured request ID, timestamp, connection ID, selected operation ID (whe
 
 For evaluation, create a labeled fixture set with expected operation, expected arguments, and expected abstentions. Publish route accuracy, end-to-end correctness, false-execution/abstention rates, p50/p95 latencies and cost. Compare against small-LLM function calling. Performance figures remain targets until benchmarked.
 
-## 10. Test and release plan
+## 10. Verification and release gates
 
-**Spike versus complete v0.1:** Start with the documented [two-target validation spike](SPIKE_PLAN.md): one configured REST GET, one independent A2A agent, zero-inference deterministic selection, bounded ownership/delegation and direct-vs-resolved measurements. The detailed unit/security checklist below is the broader proposed v0.1 release gate; do not treat every item as a prerequisite for measuring the initial two-target slice. Public deployment remains unsupported until the full security gate is satisfied.
+**The active S0–S4 implementation/test plan is [PLAN.md](PLAN.md).** This section is the persistent technical verification contract, not a second execution checklist.
 
-**Unit tests (Go `testing` and `httptest`, with `-race` in CI):** A2A request/Task/Agent Card schemas, task-state mapping and ownership/expiry; OpenAPI import and rejection, operation ID stability, candidate validation, provider outages, enum/number/date parsing, conflicting values, URL encoding/traversal, status mapping and redaction.
+- **Protocol:** Independently pinned A2A v1 HTTP+JSON client verifies discovery, `SendMessage`, `GetTask`, Task/Artifact and `INPUT_REQUIRED` continuation. Only advertise implemented capabilities and bindings.
+- **Resolution:** Authenticated caller eligibility precedes selection. Explicit/deterministic resolution calls **zero** inference providers. Unknown, ambiguous, unauthorized or model-invalid matches cause **zero** target invocations.
+- **REST:** Imported spec subset and scalar argument validation, GET allowlists, trusted origin, URL/path encoding, bounded response/timeout and no redirects. `utterroute.mode=plan` executes **zero** upstream calls.
+- **Remote A2A:** One initial authorized `SendMessage`, direct Message/completed Task mapping, bounded child Task retrieval and continuation, caller correlation and no blind retry on uncertain delivery. Treat delegated side effects as unknown until explicitly approved.
+- **Isolation and resource limits:** Task TTL/capacity and caller ownership, replay/concurrent continuation, no credential forwarding, sanitized logs, bounded queues/body sizes, DNS/SSRF safeguards and controlled rejection under overload.
+- **Negative cases:** Hostile OpenAPI and Agent Cards, prompt injection, forbidden methods/destinations, oversized artifacts, missing IDs, recursive agent hops, upstream failures and private task disclosure.
+- **Measurements:** Compare direct REST and direct A2A invocation to deterministic UtterRoute invocation, recording end-to-end and in-process p50/p95, correctness, abstention and setup effort. Semantic evaluation is a **separate optional** experiment after the baseline.
 
-**Integration tests:** A pinned, independent A2A client interacting with a deterministic mock billing REST API **and** an independent mock A2A research agent:
-
-- A2A Agent Card can be discovered and parsed; `SendMessage` returns a Task; `GetTask` retrieves only authorized tasks.
-- A2A plan-only metadata produces a completed plan artifact and zero business calls.
-- An explicit, authorized REST capability request executes at most one valid GET per Task and returns an artifact, with **zero** inference calls.
-- An explicit, approved A2A research capability causes one outbound `SendMessage`, correlates child task/context and returns a mapped artifact or bounded working/input-required task.
-- Unauthorized/unapproved remote A2A capabilities and unknown-effect risks cause **zero** outbound messages; duplicate/replayed tasks cause no additional delegation.
-- Ambiguous requests without a configured semantic router abstain rather than forcing Jev.
-- Input-required tasks can be continued; terminal tasks cannot be resumed or re-executed.
-- Unauthorized task retrieval and missing/expired task references reveal no confidential data.
-- Write intents, unknown operations, ambiguous IDs and unsupported schemas send zero calls.
-- Provider timeout, upstream 4xx/5xx, oversized responses and redirects have explicit test coverage.
-- Secrets do not appear in responses/logs.
-
-**Security tests:** SSRF cases, hostile OpenAPI descriptions, prompt injection, malicious path values, credentials in logs, DNS/redirect manipulation, and method-bypass attempts.
-
-**Release checklist:**
-
-- [ ] Docker-based sample functions from a fresh clone with documented dependencies
-- [ ] Local OpenAPI 3.x importer and GET allowlist **plus** one trusted remote A2A agent capability registration
-- [ ] Explicit/deterministic resolution works with no Jev/SystemOne key; optional inference remains a separately evaluated extension
-- [ ] A2A HTTP+JSON Agent Card, `SendMessage`, `GetTask`, task state and artifact contracts pass independent client tests
-- [ ] Plan-only task and read-only execution through the same internal service; custom HTTP adapter deferred
-- [ ] Tests prove no target invocation on plan/refused/ambiguous requests; per task at most one REST GET **or** one initial outbound A2A delegation
-- [ ] Network/security hardening and diagnostic redaction tested
-- [ ] Compare direct target invocation vs deterministic UtterRoute path p50/p95, including zero-inference verification; optional semantic comparison when configured
-- [ ] Security limits and third-party data egress documented
+**Public deployment is not in the spike's supported scope.** Network DDoS/WAF/TLS and generic API management belong to existing infrastructure. Production exposure additionally requires demonstrated application-level authorization, egress isolation, overload behavior and protocol/security tests.
 
 ## 11. Suggested repository structure (future, not present)
 
 ```text
 README.md
+AGENTS.md
 LICENSE
-docs/{PRD.md,SPEC.md,ADR-001-A2A-FIRST.md,ADR-002-GO-V0.1.md,ADR-003-CAPABILITY-RESOLVER.md}
+docs/
+  PRD.md        # product contract and user journeys
+  ARCH.md       # this technical contract
+  PLAN.md       # active spike work and stop/go evidence
+  adr/          # historical architectural decisions
+  archive/      # deferred HTTP and SystemOne reference notes
 go.mod
 cmd/utterroute/main.go
 internal/
-  a2a/           # inbound protocol and owned Task correlation
-  resolver/      # caller-eligible, deterministic-first selection
-  catalog/       # REST operations + approved remote A2A capabilities
-  targets/       # rest.go and a2a.go outbound adapters
-  config/        # trusted target/credential/policy references
+  a2a/          # inbound protocol and owned Task correlation
+  resolver/     # caller eligibility + deterministic-first resolution
+  catalog/      # REST operations and registered A2A capabilities
+  targets/      # thin rest.go and a2a.go clients
+  config/       # fixed destinations, limits, secret references
 examples/{billing-api,research-agent}/
 tests/{integration,evaluation}/
 Dockerfile
-compose.yaml
 ```
 
-Keep the first implementation small. REST argument resolution and minimal dispatch policy can live in `resolver/` and `targets/` until package size merits extraction. Avoid a generic proxy/plugin framework.
+The first Go vertical slice may use fewer packages. Do not implement a generic proxy, multi-agent orchestrator or backend plugin framework merely to satisfy a hypothetical future architecture.
 
-
-
-Later releases may add the secondary custom `/v1/execute` interface, streaming/cancel/push, durable tasks, approved writes, verification receipts, multiple dependent operations, entity lookup across APIs, MCP/GraphQL, delegated tenant access and a managed control plane. These require separate product decisions and threat modeling.
+Later releases may consider a secondary custom HTTP interface, streaming/cancel/push, durable tasks and approved writes only after explicit product decisions in the [PRD](PRD.md) and, when warranted, new ADRs. See the [archived HTTP proposal](archive/HTTP_API_FUTURE.md) for historical context.

@@ -1,8 +1,10 @@
 # ADR-001: A2A-first external interface for UtterRoute
 
+> **Decision history.** The current authoritative product and technical contracts are [PRD](../PRD.md) and [ARCH](../ARCH.md). Later ADRs may refine earlier scope; preserve the original rationale below.
+
 **Status:** Proposed for acceptance in v0.1 (documentation decision; implementation not yet shipped)  
 **Date:** 2026-11-21  
-**Related:** [PRD](PRD.md) · [Technical specification](SPEC.md) · [Future native HTTP API](HTTP_API_FUTURE.md)
+**Related:** [PRD](../PRD.md) · [Technical specification](../ARCH.md) · [Future native HTTP API](../archive/HTTP_API_FUTURE.md)
 
 > **Scope update (ADR-003):** [Capability resolver, not API gateway](ADR-003-CAPABILITY-RESOLVER.md) refines the target model to include **both REST GET operations and existing A2A agent capabilities**, with deterministic-first resolution and optional inference. This ADR continues to define the primary **inbound A2A protocol** and task lifecycle. Historical references here to one REST connection/GET reflect the original narrower proposal; they are **superseded on target scope and mandatory inference** by ADR-003.
 
@@ -14,7 +16,7 @@ The [A2A protocol v1.0](https://a2a-protocol.org/v1.0.0/specification/) already 
 
 ## Decision
 
-**Make A2A the primary and first implemented public integration surface.** UtterRoute v0.1 advertises an A2A Agent Card and accepts A2A `SendMessage` requests, delivering structured `Task` results for validated read-only calls. The existing native `POST /v1/execute` contract moves to a **future secondary interface (target v0.2)**; see [HTTP_API_FUTURE.md](HTTP_API_FUTURE.md).
+**Make A2A the primary and first implemented public integration surface.** UtterRoute v0.1 advertises an A2A Agent Card and accepts A2A `SendMessage` requests, delivering structured `Task` results for validated read-only calls. The existing native `POST /v1/execute` contract moves to a **future secondary interface (target v0.2)**; see [HTTP_API_FUTURE.md](../archive/HTTP_API_FUTURE.md).
 
 A2A is a protocol layer over HTTP, not an instruction to remove the HTTP server. Our first wire binding is **A2A HTTP+JSON** (not JSON-RPC): `POST /message:send`, `GET /tasks/{id}`, and an Agent Card at `/.well-known/agent-card.json`. Use a standards-conformant, pinned A2A SDK if feasible; verify behavior against the pinned A2A release and an independent client rather than imitating only example payloads.
 
@@ -108,7 +110,7 @@ The `SendMessage` handler may process a GET synchronously, but must still create
 
 - [A2A v1.0 specification](https://a2a-protocol.org/v1.0.0/specification/) (binding, Agent Cards, task lifecycle and security)
 - [A2A releases](https://github.com/a2aproject/A2A/releases) (pin a tested patch version; don't silently track `latest`)
-- [UtterRoute SPEC](SPEC.md) (security and execution invariants)
-- [SystemOne patterns](SYSTEMONE_PATTERNS.md) (optional inference runtime; no protocol coupling)
+- [UtterRoute SPEC](../ARCH.md) (security and execution invariants)
+- [SystemOne patterns](../archive/SYSTEMONE_PATTERNS.md) (optional inference runtime; no protocol coupling)
 
 **Non-goal:** This ADR does **not** implement A2A or claim conformance yet. It changes the intended delivery order and specifies what will need to be built and tested.

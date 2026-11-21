@@ -1,9 +1,11 @@
 # ADR-002: Use Go for the UtterRoute v0.1 reference implementation
 
+> **Decision history.** The current authoritative product and technical contracts are [PRD](../PRD.md) and [ARCH](../ARCH.md). Later ADRs may refine earlier scope; preserve the original rationale below.
+
 **Status:** Proposed for acceptance  
 **Date:** 2026-11-21  
 **Scope:** v0.1 implementation language and runtime (not a change to product goals)  
-**Related:** [ADR-001: A2A-first](ADR-001-A2A-FIRST.md) · [PRD](PRD.md) · [SPEC](SPEC.md) · [SystemOne patterns](SYSTEMONE_PATTERNS.md)
+**Related:** [ADR-001: A2A-first](ADR-001-A2A-FIRST.md) · [PRD](../PRD.md) · [SPEC](../ARCH.md) · [SystemOne patterns](../archive/SYSTEMONE_PATTERNS.md)
 
 > **Scope update (ADR-003):** [Capability resolver, not API gateway](ADR-003-CAPABILITY-RESOLVER.md) retains the **Go + official A2A SDK** implementation decision while refining the product beyond a REST-only gateway. Its two target kinds are REST GET and registered A2A agent capabilities; explicit/deterministic selection does **not** require a model. Earlier Go-versus-Rust rationale still stands, while references below to mandatory Jev and a REST-only first release are superseded by ADR-003.
 
@@ -102,7 +104,7 @@ type Router interface {
 
 Router inputs are already permission-filtered candidates. Jev results remain untrusted. Validate the chosen ID against the exact supplied candidate set, then separately resolve/validate arguments and execution policy. A test fake implements the same interface without contacting external providers.
 
-For larger catalogs, the documented SystemOne/Jev-compatible Choice subset may cap the number of options. Do not silently truncate candidates; implement a measured candidate-retrieval stage or abstain until supported. See [SystemOne patterns](SYSTEMONE_PATTERNS.md).
+For larger catalogs, the documented SystemOne/Jev-compatible Choice subset may cap the number of options. Do not silently truncate candidates; implement a measured candidate-retrieval stage or abstain until supported. See [SystemOne patterns](../archive/SYSTEMONE_PATTERNS.md).
 
 ## Implementation sequence
 

@@ -1,15 +1,17 @@
 # Reusable patterns from SystemOne
 
+> **Archived reference, not current implementation scope.** Use [PRD](../PRD.md), [ARCH](../ARCH.md), and [PLAN](../PLAN.md) for the active decisions and implementation steps.
+
 **Status:** Architecture reference, not an implemented integration  
 **Upstream:** [codesoda/systemone](https://github.com/codesoda/systemone) (independent project, MIT license)  
-**Applies to:** [UtterRoute v0.1 technical specification](SPEC.md)  
+**Applies to:** [UtterRoute v0.1 technical specification](../ARCH.md)  
 **Reviewed:** 2026-10-26
 
 ## Why this reference exists
 
 [SystemOne](https://github.com/codesoda/systemone) provides a Jev-compatible HTTP server and interchangeable inference backends for typed decisions (Choice, Noul, Score). It does **not** import OpenAPI catalogs, resolve API business entities, check API permissions, or execute arbitrary REST operations. Those remain UtterRoute's responsibilities.
 
-We can **reuse design patterns** from SystemOne without copying implementation code, embedding Rust crates, or making it a dependency. UtterRoute is now defined as an **A2A-first capability resolver** for an approved REST GET **or** remote A2A capability, with explicit/deterministic routing by default. Jev and SystemOne are **optional** semantic selection providers, not mandatory hops; see the [PRD](PRD.md) and [ADR-003](ADR-003-CAPABILITY-RESOLVER.md).
+We can **reuse design patterns** from SystemOne without copying implementation code, embedding Rust crates, or making it a dependency. UtterRoute is now defined as an **A2A-first capability resolver** for an approved REST GET **or** remote A2A capability, with explicit/deterministic routing by default. Jev and SystemOne are **optional** semantic selection providers, not mandatory hops; see the [PRD](../PRD.md) and [ADR-003](../adr/ADR-003-CAPABILITY-RESOLVER.md).
 
 ## Patterns worth adopting
 
@@ -94,7 +96,7 @@ For UtterRoute use two separate trusted destination sets:
 1. **Inference:** Only the configured TypeSafe or future SystemOne inference endpoint may receive decision requests, subject to provider-specific data disclosure.
 2. **Business API:** Only origins and GET operations explicitly configured and allowlisted by the developer.
 
-The inference result must never become a URL, HTTP method or credential source. Preserve the stricter [UtterRoute SSRF and DNS-rebinding requirements](SPEC.md#8-security-and-network-execution); SystemOne's own transport policy is not a replacement for them.
+The inference result must never become a URL, HTTP method or credential source. Preserve the stricter [UtterRoute SSRF and DNS-rebinding requirements](../ARCH.md#8-security-and-network-execution); SystemOne's own transport policy is not a replacement for them.
 
 ### Pattern E — Separate wire conformance from task correctness
 

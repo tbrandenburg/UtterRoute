@@ -1,9 +1,11 @@
 # ADR-003: Capability resolver, not a general API gateway
 
+> **Decision history.** The current authoritative product and technical contracts are [PRD](../PRD.md) and [ARCH](../ARCH.md). Later ADRs may refine earlier scope; preserve the original rationale below.
+
 **Status:** Proposed for acceptance  
 **Date:** 2026-11-21  
 **Scope:** Product differentiation, v0.1 target model, and build-vs-integrate boundaries  
-**Related:** [PRD](PRD.md) · [SPEC](SPEC.md) · [ADR-001: A2A-first](ADR-001-A2A-FIRST.md) · [ADR-002: Go](ADR-002-GO-V0.1.md)
+**Related:** [PRD](../PRD.md) · [SPEC](../ARCH.md) · [ADR-001: A2A-first](ADR-001-A2A-FIRST.md) · [ADR-002: Go](ADR-002-GO-V0.1.md)
 
 ## Context
 
@@ -137,4 +139,4 @@ For v0.1 explicitly **do not build**: generic reverse proxy, WAF, TLS gateway, A
 - [A2A v1 specification](https://a2a-protocol.org/v1.0.0/specification/)
 - [ADR-001: A2A-first](ADR-001-A2A-FIRST.md)
 - [ADR-002: Go](ADR-002-GO-V0.1.md)
-- [SystemOne patterns](SYSTEMONE_PATTERNS.md)
+- [SystemOne patterns](../archive/SYSTEMONE_PATTERNS.md)
