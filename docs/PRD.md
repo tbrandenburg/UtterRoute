@@ -3,40 +3,43 @@
 **Release:** v0.1 (proposed)  
 **Status:** Draft for discussion; no implementation is shipped  
 **Last updated:** 2026-11-21  
-**Related:** [Technical specification](SPEC.md) · [Project README](../README.md)
+**Related:** [Technical specification](SPEC.md) · [Product scope ADR-003](ADR-003-CAPABILITY-RESOLVER.md) · [Project README](../README.md)
 
 ## 1. Summary
 
-UtterRoute is a self-hostable, MIT-licensed **A2A-first natural-language gateway for existing REST APIs**. Developers register an OpenAPI-described service; other agents discover UtterRoute's business capabilities through an Agent Card and send natural-language instructions using A2A. UtterRoute returns retrievable task outcomes with validated read-only API results, plans, or clarification/refusal.
+UtterRoute is a self-hostable, MIT-licensed **A2A-first capability resolver** for existing REST APIs **and independently running A2A agents**. It registers operator-approved capabilities, selects one that an authenticated caller is allowed to use, and delegates through a small protocol-specific adapter. It is **not** a general API gateway, reverse proxy, agent runtime or API-management product.
 
-**Promise:** *Make REST APIs callable by agents.* A2A messages in; validated, traceable API results out. The custom `POST /v1/execute` HTTP interface is secondary, planned after v0.1.
+**Promise:** *Discover capabilities, resolve intent, dispatch safely.* A2A messages in; one approved REST operation or downstream A2A agent task out.
 
-For v0.1, use a **Jev-first, provider-pluggable** selection layer. Jev selects among permitted operations; deterministic code handles schema validation, authorization, argument checks, and HTTP execution. The router must abstain when it cannot establish a safe, unambiguous call. Jev is a hosted proprietary model; UtterRoute's own code remains MIT-licensed. A TypeSafe API key is required for the first Jev adapter, and third-party data handling must be documented.
+**Fast by default:** When an eligible capability is explicitly selected or determined by an unambiguous configured rule, UtterRoute dispatches **without inference**. For ambiguous intent, Jev is the first **optional** semantic selector; SystemOne may be compared later. Without a suitable configured router, unresolved ambiguity leads to clarification/abstention. A TypeSafe key is **not required** for deterministic usage.
+
+**Infrastructure boundary:** Use established gateways/ingress for TLS, DDoS/WAF, generic HTTP rate limiting and identity infrastructure. UtterRoute retains caller-to-task and caller-to-capability authorization plus minimal fixed-egress and workload safeguards. See [ADR-003](ADR-003-CAPABILITY-RESOLVER.md).
 
 ## 2. Problem and customer
 
 ### Problem
 
-An OpenAPI description documents the syntax of an API but does not let application builders invoke it reliably with ordinary language. LLM tool calling can work, yet often requires bespoke prompts, orchestration, credentials handling, validation, and failure management per API.
+An A2A client can invoke a known agent, and a conventional client can invoke a known REST endpoint. It is harder to **select** the right eligible capability among existing APIs and A2A agents without custom wiring, a slow inference step on every call or an unsafe black-box agent. API gateway products solve transport but do not eliminate this selection problem.
 
 ### Initial users
 
-- **Primary:** Developers embedding natural-language read operations into a vertical SaaS product or internal tool.
-- **Secondary:** API/platform engineers testing a natural-language interface to an existing REST API.
-- **Not the v0.1 buyer:** Nontechnical end users looking for a general chatbot or autonomous agent platform.
+- **Primary:** Developers integrating existing REST capabilities and A2A agents into an A2A environment who need discoverable, authorized selection.
+- **Secondary:** Agent/platform teams evaluating semantic selection against deterministic dispatch and direct invocation.
+- **Not the v0.1 buyer:** High-throughput HTTP proxy users, API-management teams buying portals/traffic products, or end users seeking a general chatbot.
 
 ### Job to be done
 
-> When my team already operates a documented REST API, I want to expose a constrained, discoverable A2A capability that other agents can call, without building bespoke agent orchestration or surrendering control of API execution.
+> When my agent needs a capability available through an existing API or specialist A2A agent, I want to register it once, discover its approved skills, and invoke the correct target through A2A without building a general API gateway or bespoke workflow orchestrator.
 
 ## 3. Product principles
 
-1. **Safety over apparent cleverness:** Do not guess missing identifiers, invent values, or silently execute a different operation.
-2. **Deterministic enforcement:** An AI selection never bypasses allowed operations, identity/policy, or schema validation.
-3. **Explainability by default:** Return the operation, arguments, status, and a request ID. Keep sensitive detail out of logs.
-4. **Open core in full:** Local/self-hosted mode, routing, validation, and tracing are open source; no artificial paywall on safety.
-5. **Model independence:** Jev is the first adapter, not the external API or a permanent architectural requirement.
-6. **Small and composable:** Build a gateway, not a full conversation agent, workflow builder, or tool marketplace.
+1. **Capability resolution, not generic proxying:** Optimize discovery, selection and safe one-target dispatch; use existing gateways for infrastructure.
+2. **Deterministic first:** Explicit authorized selection and unambiguous rules bypass Jev/SystemOne; ambiguous input abstains or invokes an **optional** configured semantic selector.
+3. **One target per task:** A single permitted REST GET *or* one approved A2A delegation. No fan-out, write-capable REST operations or multi-agent orchestration.
+4. **Authorization before selection:** Target metadata, caller hints and model outputs are untrusted; policy filters the candidate set and validates the decision.
+5. **Honest downstream semantics:** REST is read-only in the first release. A2A agents may have side effects and persistent tasks; operator policy must explicitly approve their skills and classify risks.
+6. **Measurable benefit:** Compare against direct invocation and simple deterministic dispatch for overhead, accuracy, abstention and integration effort.
+7. **Open, small and composable:** Go + A2A SDK, local configuration, replaceable router and thin target adapters; no proprietary infrastructure dependency for baseline functionality.
 
 ## 4. v0.1 scope
 
@@ -44,61 +47,57 @@ An OpenAPI description documents the syntax of an API but does not let applicati
 
 | ID | Requirement | Acceptance criteria |
 | --- | --- | --- |
-| PRD-01 | Import local OpenAPI 3.x | A local spec is ingested and validated at startup; malformed specs fail clearly |
-| PRD-02 | Normalized operation registry | Stable operation IDs, descriptions, scalar path/query schemas and HTTP metadata |
-| PRD-03 | Allowlisted read execution | Only explicitly enabled **GET** operations can execute; fixed configured origins |
-| PRD-04 | **A2A Agent Card (primary)** | Serve valid A2A v1 Agent Card with truthful skill, supported `HTTP+JSON` interface and security declaration |
-| PRD-05 | **A2A `SendMessage`** | `POST /message:send` accepts text instructions under authenticated local/controlled deployment; no custom wrapper required |
-| PRD-06 | **A2A tasks and retrieval** | A2A-compatible `Task` for every accepted request; `GET /tasks/{id}` returns authorized task state and result; temporary bounded TTL store |
-| PRD-07 | **Input-required continuation** | Missing/ambiguous parameters produce an input-required task; authorized follow-up `SendMessage` can resolve it without executing an extra operation |
-| PRD-08 | Jev-first intent routing | Select an eligible operation or abstain; never produce arbitrary request URLs |
-| PRD-09 | Scalar argument resolution and validation | Support constrained path/query scalar values; refuse ambiguous/unsupported required fields |
-| PRD-10 | Read-only execution and result artifacts | At most one business GET per task; bounded upstream result and actual HTTP status appear in an A2A artifact |
-| PRD-11 | Optional plan mode | A2A message metadata `utterroute.mode=plan` returns a plan artifact; no upstream business API call |
-| PRD-12 | Safe task/error mapping | Denial, no-match, provider failures and upstream failures map to proper task states or protocol errors without guessing |
-| PRD-13 | Security and task isolation | Authenticated caller-to-task ownership, no credential forwarding, fixed outbound origins, redirects off, size/timeout limits |
-| PRD-14 | Local developer experience | One reproducible A2A client-to-mock-billing demo with documented setup and configuration |
-| PRD-15 | Evaluation and observability | A2A wire conformance, router correctness, abstention, task state, sanitized request IDs/timings and no-side-effect tests |
+| PRD-01 | Registered REST capabilities | Parse a local OpenAPI 3.x subset, allowlist GET operations and pin trusted configured origins |
+| PRD-02 | Registered A2A capabilities | Register a **trusted existing remote A2A agent** and operator-approved skill from an explicit Agent Card/URL; deny unapproved or unknown-side-effect skills by default |
+| PRD-03 | Unified capability catalog | Stable capability IDs, target kinds (`rest_operation` / `a2a_agent_skill`), descriptions and operator eligibility policy |
+| PRD-04 | **A2A Agent Card (primary)** | Advertise truthful, bounded skills and HTTP+JSON security/interface declarations |
+| PRD-05 | **A2A `SendMessage` / `GetTask`** | An independent A2A client can send an instruction, retrieve a task and inspect its artifact |
+| PRD-06 | Task ownership and continuation | Caller-scoped bounded/TTL Task storage; input-required clarification; no unauthorized or repeated downstream invocation |
+| PRD-07 | Deterministic-first selection | Explicit capability hints and configured unambiguous rules execute **without Jev**; unknown/unapproved/ambiguous intents safely refuse |
+| PRD-08 | Thin REST dispatch | Validate supported scalar path/query values; execute at most one authorized GET per task; bound response sizes/timeouts |
+| PRD-09 | Thin A2A delegation | Send at most one authorized downstream `SendMessage` per task, correlate child Task/context, handle completed/input-required/working within bounded limits |
+| PRD-10 | Plan-only mode | A2A `utterroute.mode=plan` returns the chosen capability and sanitized preview without invoking a REST or A2A target |
+| PRD-11 | Trust and safety boundaries | Verify caller eligibility, fixed target origins, agent skill approval, credentials isolation, bounded work, task ownership and no dispatch on refusal |
+| PRD-12 | Reproducible two-target spike | One sample REST billing operation **and** one independent mock A2A research agent behind UtterRoute; external A2A client invokes both |
+| PRD-13 | Measurement and observability | Compare direct target vs deterministic resolution overhead; report p50/p95, refusal, correctness, task state, side-effect safety |
+| PRD-14 | Explicit build-vs-integrate scope | No generic HTTP reverse proxy/WAF/API management; document supported deployment behind existing ingress and its shared responsibilities |
 
 ### Deferred / potential v0.2 features
 
-- **Secondary custom HTTP adapter:** `POST /v1/execute` using the same core service; see [HTTP_API_FUTURE.md](HTTP_API_FUTURE.md).
-- Deterministic shortlisting before Jev selection for larger catalogs.
-- Optional CLI command to inspect imported operations.
-- Additional routing engines via the same typed router interface.
+- **Optional Jev semantic selection:** First supported inference adapter and held-out benchmark, added only if deterministic routing cannot resolve the request safely. Its use must be opt-in and cannot be required for direct selection.
+- **Optional SystemOne HTTP adapter** if the Jev comparative evaluation justifies it; no bundled inference runtime.
+- **Secondary native HTTP API:** `POST /v1/execute` using the same resolver, subject to demonstrated user demand.
+- Multiple registries, scalable candidate preselection, richer argument extraction, and more agent skill configurations.
 
 ### Explicitly out of scope
 
-- Arbitrary POST/PUT/PATCH/DELETE calls, and write approvals or transaction rollback.
-- Chaining multiple API operations, autonomous plans, stateful agents, or entity lookup across endpoints.
-- GraphQL, MCP server ingestion, voice input, and browser/UI automation.
-- A2A streaming, push notifications, cancellation, multi-instance durable task storage, and additional A2A protocol bindings (JSON-RPC/gRPC).
-- The custom `POST /v1/execute` adapter in the initial release.
-- Automatic OAuth connection setup, hosted multi-tenant control plane, visual UI, billing, or managed cloud.
-- General arbitrary JSON-body synthesis, arbitrary string extraction, or guaranteed resolution of natural-language references.
-- Claims of guaranteed correctness, end-to-end subsecond performance, or fully offline Jev inference.
+- **Generic API gateway features:** Arbitrary HTTP proxying, transformations, traffic splitting, load balancing, centralized API analytics/developer portals, key issuance, metering/billing, generic TLS/WAF/DDoS termination or identity provider.
+- **General agent orchestration:** Multiple downstream targets per request, fan-out, chained tool calls, long-running workflow engine, arbitrary delegated write approvals.
+- **REST writes:** API `POST`/`PUT`/`PATCH`/`DELETE` execution, general JSON body synthesis, transaction rollback.
+- Auto-discovery of arbitrary remote agents or caller-supplied URLs; blind trust in Agent Cards, model descriptions or downstream side-effect claims.
+- Streaming, push/cancel, durable multiworker task queues, additional A2A protocol bindings, MCP/GraphQL ingestion or hosted multitenant control plane.
+- Claims of guaranteed routing accuracy, zero gateway overhead, general agent correctness or safe autonomous behavior of a remote agent.
 
 ## 5. Core experience
 
-### First run: agent-to-API
+### First run: resolve to a REST operation or an A2A agent
 
-1. Developer configures one OpenAPI-described read-only REST service, an explicit GET allowlist and a trusted origin.
-2. UtterRoute exposes an A2A v1 Agent Card with a bounded read-API skill and an HTTP+JSON interface.
-3. An A2A client sends `SendMessage` with text such as “List unpaid invoices.”
-4. Jev selects the permitted operation and constrained arguments; code validates them and issues **at most one GET** using operator-configured credentials.
-5. UtterRoute returns an A2A `Task` with a result artifact containing the operation, parameters, upstream HTTP status and bounded body. The client can retrieve the task via `GetTask`.
+1. Operator configures two approved capabilities: an OpenAPI-described billing GET and a separately running A2A research agent with an explicitly approved skill.
+2. UtterRoute exposes a bounded A2A Agent Card/HTTP+JSON interface; callers authenticate and receive an eligible capability set.
+3. A client sends an A2A `SendMessage` naming an approved capability or matching a configured deterministic rule. **No model call is needed.**
+4. UtterRoute dispatches to **one** target, returns a Task artifact and supports authorized `GetTask`.
+5. For a REST operation, it validates arguments and sends at most one GET; for a remote A2A agent, it sends at most one downstream `SendMessage` and maps the child task/context as needed.
 
-A2A requests default to **read-only execute** when eligible. For a no-upstream-call preview, the caller uses the optional, explicitly documented `message.metadata["utterroute.mode"] = "plan"`. No write operations are enabled.
-
-**Important:** The example assumes the registered API exposes a `status=unpaid` parameter. No cross-API entity resolution is implied.
+When no deterministic match exists, UtterRoute clarifies/refuses by default. A later **optional Jev adapter** may select among eligible candidates after comparative tests demonstrate value. No TypeSafe key is needed for the v0.1 baseline.
 
 ### Task and failure behavior
 
-- “Cancel invoice 42” → task rejected for unsupported write; no business API call.
-- “Fetch the invoice for Alex” without a unique identifier → input-required task asking for the identifier; no business API call until safely resolved.
-- Unknown capability → task rejected or protocol error as appropriate; no guessed endpoint.
-- Provider unavailable → task failed with sanitized diagnostic; no alternative provider selected silently.
-- Follow-up `SendMessage` with matching `taskId` and `contextId` can continue an input-required task, but cannot restart terminal tasks or bypass caller authorization.
+- “Cancel invoice 42” → no REST write. A similarly named remote agent skill is eligible **only** if explicitly approved by operator policy.
+- Missing invoice identifier → input-required task, no downstream dispatch.
+- An unapproved downstream skill, unknown ID, conflicting candidate match or unavailable inference provider → refusal/failure; never guess a target or silently switch providers.
+- A remote agent returning a working or input-required child task is correlated to the caller-owned UtterRoute task; child status is retrieved or clarified under bounded limits and existing A2A semantics.
+- A2A tasks may have remote side effects despite the REST GET-only rule. Completion does not prove remote business success.
+- Replayed input and unauthorized task access must not initiate a second downstream call.
 
 ## 6. API-facing behavior
 
@@ -115,30 +114,32 @@ A2A's authorization and task security are separate from upstream API credentials
 
 ## 7. Success metrics and validation
 
-The primary metric is **correct, safe end-to-end execution**, not the router's top-1 classification rate.
+The validation goal is **incremental selection value with low fast-path overhead**, not throughput or API gateway market share.
 
 | Area | Release evaluation target (initial, to validate) |
 | --- | --- |
-| A2A conformance | A pinned v1-compatible A2A client discovers the Agent Card, invokes SendMessage, retrieves Task and continues input-required Task |
-| Task safety | Caller cannot retrieve another caller's task; expired tasks disappear; terminal tasks reject replay; no unauthorized business call |
-| Operation routing | ≥95% on a held-out set of supported, unambiguous single-step cases |
-| Full request success | ≥90% on the same supported cases, including parameter correctness and API result |
-| Unsafe side effects | Zero non-GET requests; zero unauthorized destinations in integration/security tests |
-| Ambiguous requests | Abstain or request clarification rather than execute the wrong operation |
-| Latency | Report p50/p95 independently for routing, parameter resolution and end-to-end gateway overhead; compare against a small-LLM baseline |
-| Developer setup | A fresh developer can use a documented A2A client to discover, query, and retrieve a mock-billing task within 10 minutes once dependencies/keys are available |
+| A2A conformance | An independent client discovers UtterRoute, sends messages to both target kinds, retrieves tasks and handles input-required continuation |
+| Registration | Operator can configure one REST operation and one remote A2A skill without changing either target implementation |
+| Task safety | Caller ownership, TTL, replay guards and bounded child-task polling; zero unauthorized downstream invocations in tests |
+| Explicit/deterministic path | **Zero inference calls**; compare p50/p95 against direct invocation, with an initial goal of <10 ms additional in-process p95 overhead (network separately measured) |
+| Semantic selection (optional later) | Compare held-out accuracy, abstention, cost and p50/p95 against deterministic baseline; never force inference for explicit selection |
+| REST security | Zero non-GET requests and zero unauthorized origins in test fixtures |
+| Agent authorization | Zero calls to unapproved remote A2A skills, and deny unknown side-effect risks by default |
+| Failure behavior | Ambiguous or unavailable targets abstain; provider outages do not trigger hidden cloud fallback |
+| Adoption hypothesis | Developer can discover and invoke the two registered capability types without writing a bespoke A2A bridge |
+| Stop condition | If neither setup nor selection improves meaningfully over direct A2A or existing adapters, narrow to a reusable resolver library rather than expand into gateway features |
 
-Targets are hypotheses, not measurements. Benchmark samples must include paraphrases, out-of-domain requests, missing parameters, swapped operations, provider failures, adversarial instructions, and identical inputs with reordered routing candidates. Evaluate on fixtures with known ground truth and preserve regression data.
+These are **hypotheses, not measured results**. The deterministic p95 goal is an in-process budget, not an end-to-end latency guarantee. Test direct target call, deterministic UtterRoute dispatch, and (later) semantic dispatch with the same fixtures.
 
-## 8. Milestones (A2A first)
+## 8. Milestones (A2A first, resolver scope)
 
-1. **A2A protocol skeleton (Go):** Pin Go toolchain and official `a2a-go/v2` release, implement Agent Card, `SendMessage`, `GetTask`, and conformance fixtures.
-2. **Task lifecycle and isolation:** Bounded single-instance task store, TTL, caller authorization, input-required continuation and terminal-state handling.
-3. **API gateway core:** OpenAPI importer, allowlist, mock billing API, safe network boundaries, deterministic fake router.
-4. **Jev and execution:** Jev adapter, scalar resolution, safe plan/read-only GET execution, artifact/task mapping and traces.
-5. **Release gate:** Interoperability demo using an external A2A client, integration/security tests and end-to-end evaluation.
+1. **A2A shell:** Pin Go + A2A SDK; Agent Card, SendMessage, GetTask, auth-aware bounded tasks, independent-client smoke test.
+2. **Capability catalog:** Register one trusted REST GET and one approved remote A2A skill, with stable IDs, policy and deterministic selection.
+3. **Two thin target adapters:** REST GET and outbound A2A SendMessage; child-task mapping, deadlines, refusal and replay tests.
+4. **Measure the wedge:** Compare direct invocations vs deterministic path latency, correctness, setup friction and A2A interoperability; document whether a standalone service is justified.
+5. **Optional semantic experiment:** Add a Jev adapter only after the baseline works; measure held-out improvement before promoting it to a required release feature.
 
-The native `POST /v1/execute` HTTP adapter comes **after** the first A2A-first release; it is not a dependency of the A2A core.
+Do **not** implement a generic HTTP gateway or proprietary `/v1/execute` API as a release prerequisite.
 
 ## 9. Risks and mitigations
 
@@ -152,7 +153,10 @@ The native `POST /v1/execute` HTTP adapter comes **after** the first A2A-first r
 | SSRF and credential leakage from imported specifications | Pin outbound origins, block redirects to untrusted hosts, prevent arbitrary URLs/headers, and redact secrets |
 | Imported spec or upstream response includes prompt-injection text | Treat descriptions/responses as untrusted data; never grant authority over policies |
 | Provider cost, latency, outage or licensing changes | Provider interface, bounded timeouts, version pinning, no silent risky fallback |
-| GTM becomes too broad | Begin with one use case and a small set of business APIs; validate with embedding developers |
+| Scope drifts into generic API management | Enforce [ADR-003](ADR-003-CAPABILITY-RESOLVER.md)'s build/integrate/exclude filter; use existing ingress/API gateways |
+| Remote A2A agents have side effects | Explicitly register and authorize approved skills; unknown-effect delegation denied by default; one target per task |
+| Mandatory semantic routing increases latency/cost | Keep explicit/deterministic resolution as zero-inference default; evaluate Jev separately |
+| GTM becomes too broad | Validate two target types and measured capability-selection value before additional connectors |
 
 ## 10. Decisions still open
 
@@ -165,4 +169,4 @@ The native `POST /v1/execute` HTTP adapter comes **after** the first A2A-first r
 - Default routing-confidence policy; must be calibrated from fixtures rather than treated as a probability of business success.
 - Which authenticated local development policy and token mechanism to use by default for A2A task isolation.
 
-**Definition of done:** A new contributor can discover UtterRoute via an A2A Agent Card, use an independent A2A client to send a read-only request and retrieve a Task with structured API result, continue an input-required Task, and demonstrate that plan-only/ambiguous/denied requests make **zero** business calls; the custom native HTTP interface is not required.
+**Definition of done:** An independent A2A client discovers and invokes **one registered REST GET** and **one approved existing A2A agent**, receives caller-owned Tasks/artifacts, observes an input-required continuation and correct abstention; **explicit routing makes zero model calls**, disallowed requests make zero downstream calls, and no custom HTTP/API-management system is required. Benchmarks compare direct vs resolved dispatch.

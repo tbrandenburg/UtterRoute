@@ -9,15 +9,15 @@
 
 [SystemOne](https://github.com/codesoda/systemone) provides a Jev-compatible HTTP server and interchangeable inference backends for typed decisions (Choice, Noul, Score). It does **not** import OpenAPI catalogs, resolve API business entities, check API permissions, or execute arbitrary REST operations. Those remain UtterRoute's responsibilities.
 
-We can **reuse design patterns** from SystemOne without copying implementation code, embedding Rust crates, or making it a dependency. The first UtterRoute release remains an **A2A-first**, Jev-first, single-operation, allowlisted-GET gateway as documented in the [PRD](PRD.md) and [ADR-002](ADR-002-GO-V0.1.md).
+We can **reuse design patterns** from SystemOne without copying implementation code, embedding Rust crates, or making it a dependency. UtterRoute is now defined as an **A2A-first capability resolver** for an approved REST GET **or** remote A2A skill, with explicit/deterministic routing by default. Jev and SystemOne are **optional** semantic selection providers, not mandatory hops; see the [PRD](PRD.md) and [ADR-003](ADR-003-CAPABILITY-RESOLVER.md).
 
 ## Patterns worth adopting
 
 | Pattern | Verified upstream reference | UtterRoute application | Priority |
 | --- | --- | --- | --- |
-| **1. Provider-neutral decision interface** | [`DecisionHost` and `CallContext`](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/host.rs) | Define `Router.route(instruction, candidates, context)` returning a selected registered operation ID **or abstention**. Keep provider credentials out of call context. | **v0.1: Adopt the idea** |
+| **1. Provider-neutral decision interface** | [`DecisionHost` and `CallContext`](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/host.rs) | Define `Router.route(instruction, candidates, context)` returning a selected registered **capability ID** (REST or A2A) **or abstention**. Keep provider credentials out of call context. | **v0.1: Adopt the idea** |
 | **2. Explicit backend capabilities and limits** | [`Capabilities` and validation](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/capabilities.rs) | Define per-provider capability metadata (Choice support, maximum choices, accepted state formats, model identity, confidence semantics) and reject unsupported jobs before inference. | **v0.1: Minimal; expand later** |
-| **3. Typed HTTP contract and strict parsing** | [Jev-compatible JSON schema](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json) and [wire parsing](https://github.com/codesoda/systemone/blob/main/crates/systemone-http/src/wire.rs) | Keep incoming request/response types stable. Validate all model response fields, chosen IDs and numeric ranges; never repair unexpected selections into apparently valid API calls. | **v0.1: Adopt** |
+| **3. Typed HTTP contract and strict parsing** | [Jev-compatible JSON schema](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json) and [wire parsing](https://github.com/codesoda/systemone/blob/main/crates/systemone-http/src/wire.rs) | Keep incoming request/response types stable. Validate model response fields and chosen capability IDs; never repair unexpected selections into apparently valid target calls. | **v0.1: Adopt** |
 | **4. Explicit backends, pinning, no silent fallback** | [SystemOne sample configuration](https://github.com/codesoda/systemone/blob/main/examples/systemone.config.toml) and [backend contract](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/host.rs) | Put router provider/model/version, connection secrets and permitted inference destination in operator configuration. Never switch to hosted inference automatically when local inference fails. | **v0.1: Adopt** |
 | **5. Bounded queues and deadlines** | [Resident worker registry](https://github.com/codesoda/systemone/blob/main/crates/systemone-http/src/registry.rs) and [server](https://github.com/codesoda/systemone/blob/main/crates/systemone-http/src/server.rs) | Enforce concurrency limits and deadlines for gateway requests and provider calls; distinguish overload, timeout and provider failure. Do not reproduce a complex resident model worker unless we actually host models. | **v0.1: Simple limits; advanced later** |
 | **6. Safe hosted transport** | [Remote transport](https://github.com/codesoda/systemone/blob/main/crates/systemone-remote/src/transport.rs) | Fixed destinations, no redirects, bounded response bodies, per-call secrets, timeouts, no transparent retries, and no blindly forwarded client headers. Apply separately to model calls and business GET calls. | **v0.1: Adopt** |
@@ -29,7 +29,7 @@ We can **reuse design patterns** from SystemOne without copying implementation c
 
 ## Concrete mapping to UtterRoute
 
-### Pattern A — Routing is a typed decision, not a generated HTTP call
+### Pattern A — Routing is a typed capability decision, not a generated target URL
 
 SystemOne's [neutral `DecisionHost`](https://github.com/codesoda/systemone/blob/main/crates/systemone-core/src/host.rs) separates typed inference from transport and model ownership. UtterRoute should use a smaller analogous interface:
 
@@ -38,15 +38,15 @@ SystemOne's [neutral `DecisionHost`](https://github.com/codesoda/systemone/blob/
 type Router interface {
     Route(ctx context.Context, instruction string, candidates []Candidate) (RoutingDecision, error)
 }
-// RoutingDecision contains a registered operation ID (or abstain),
+// RoutingDecision contains a registered capability ID (or abstain),
 // a provider-specific score (not business correctness), and a reason.
 ```
 
-Only the **allowlisted** OpenAPI operations are ever passed in as candidates. A decision is an untrusted *proposal*; the gateway rechecks the operation method, parameters and configured destination.
+Only **eligible, operator-approved** REST operations or A2A skills may be passed as candidates. A decision is an untrusted *proposal*; the resolver rechecks caller authorization, target kind, method/skill policy, parameters and configured destination.
 
 ### Pattern B — Respect Jev-compatible Choice limits
 
-The [published wire subset](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json) caps a single Choice question at **16 criteria**. Reserve `none_of_the_above` for abstention, leaving a maximum of **15** real operation candidates when using that subset.
+The [published wire subset](https://github.com/codesoda/systemone/blob/main/compat/jev-http-v1.schema.json) caps a single Choice question at **16 criteria**. Reserve `none_of_the_above` for abstention, leaving a maximum of **15** eligible REST-operation or A2A-skill candidates when using that subset.
 
 Illustrative request to a separately configured SystemOne server:
 
@@ -72,7 +72,7 @@ Content-Type: application/json
 }
 ```
 
-This is a **decision request only**. A valid answer still requires independent parameter extraction, schema checks, origin restrictions, and the configured execution policy. For more than 15 eligible operations, **do not silently truncate the catalog**. First build and evaluate a candidate-retrieval stage, or return a controlled failure until it exists. The subset may differ from individual hosted model limits; each adapter must declare and test its own constraints.
+This is a **decision request only**. A valid answer still requires independent parameter extraction, schema checks, origin restrictions, and the configured execution policy. For more than 15 eligible capabilities, **do not silently truncate the catalog**. First build and evaluate a candidate-retrieval stage, or return a controlled failure until it exists. The subset may differ from individual hosted model limits; each adapter must declare and test its own constraints.
 
 ### Pattern C — Capabilities and confidence are not interchangeable
 
@@ -117,13 +117,13 @@ A successful HTTP request or passing SDK smoke test proves **wire compatibility*
 
 ## Recommended adoption sequence
 
-1. **Now (foundation):** Define neutral `Router` types, configuration/secret boundaries, response validation, error mapping and evaluation fixtures. Keep a deterministic fake router for integration tests.
-2. **v0.1 baseline:** Implement a direct hosted Jev adapter and the read-only single-operation `plan`/`execute` path. Verify refusal and security invariants.
-3. **Optional follow-up:** Add an explicit `systemone-http` adapter as a separately configured endpoint. Reuse the Jev-compatible schema, and contract-test it against a pinned SystemOne release.
-4. **Comparative evaluation:** Run the same held-out UtterRoute requests through direct Jev and selected SystemOne backends. Measure end-to-end correctness, abstention rate, request latency, token/usage costs and unintended business calls; decide whether offering this optional backend is worthwhile.
+1. **Now (foundation):** Define a capability catalog for REST and A2A skills, deterministic-first resolver types, configuration/secret boundaries and evaluation fixtures. Keep a fake router for integration tests; require zero inference on direct selection.
+2. **v0.1 baseline:** Implement a direct/deterministic REST GET and approved remote A2A skill path with one target per task, A2A Task/artifact mapping and no TypeSafe key requirement.
+3. **Optional semantic experiment:** Add direct Jev as the first optional selector only if it improves ambiguous resolution; later consider explicit `systemone-http` against a pinned SystemOne release.
+4. **Comparative evaluation:** For ambiguous requests that need a model, run the same held-out UtterRoute requests through direct Jev and selected SystemOne backends. Measure end-to-end correctness, abstention rate, request latency, token/usage costs and unintended business calls; decide whether offering this optional backend is worthwhile.
 
 ## Attribution and scope
 
 SystemOne is independently developed by codesoda and [MIT-licensed](https://github.com/codesoda/systemone/blob/main/LICENSE). This document links to its patterns but does not copy source code. UtterRoute is not affiliated with or endorsed by SystemOne, TypeSafe AI or the other backend providers. Downloaded model artifacts and hosted services retain their own terms.
 
-**Decision:** Reference reusable patterns now; make SystemOne interoperability an optional, separately validated future implementation—not a mandatory v0.1 dependency.
+**Decision:** Reference reusable patterns now; make SystemOne interoperability an optional, separately validated future implementation—not a mandatory v0.1 dependency. The initial resolver fast path requires **zero inference calls** for explicitly authorized, deterministic capability selection.
