@@ -4,7 +4,7 @@
 **Date:** 2026-11-21  
 **Related:** [PRD](PRD.md) · [Technical specification](SPEC.md) · [Future native HTTP API](HTTP_API_FUTURE.md)
 
-> **Scope update (ADR-003):** [Capability resolver, not API gateway](ADR-003-CAPABILITY-RESOLVER.md) refines the target model to include **both REST GET operations and existing A2A agent skills**, with deterministic-first resolution and optional inference. This ADR continues to define the primary **inbound A2A protocol** and task lifecycle. Historical references here to one REST connection/GET reflect the original narrower proposal; they are **superseded on target scope and mandatory inference** by ADR-003.
+> **Scope update (ADR-003):** [Capability resolver, not API gateway](ADR-003-CAPABILITY-RESOLVER.md) refines the target model to include **both REST GET operations and existing A2A agent capabilities**, with deterministic-first resolution and optional inference. This ADR continues to define the primary **inbound A2A protocol** and task lifecycle. Historical references here to one REST connection/GET reflect the original narrower proposal; they are **superseded on target scope and mandatory inference** by ADR-003.
 
 ## Context
 
@@ -24,7 +24,7 @@ All interfaces call the same internal service, which owns OpenAPI discovery, Jev
 
 | Surface | Priority | Behavior |
 | --- | --- | --- |
-| Agent Card | P0 | Advertise a truthful, bounded business skill and supported HTTP+JSON binding; no secret endpoints or operations |
+| Agent Card | P0 | Advertise a truthful, bounded protocol-defined Agent Card `skills` entry and supported HTTP+JSON binding; no secret endpoints or operations |
 | A2A `SendMessage` (`POST /message:send`) | P0 | Accept a text instruction; default to a read-only execute operation within a configured connection |
 | A2A `GetTask` (`GET /tasks/{id}`) | P0 | Retrieve scoped task state/results from a bounded, temporary store |
 | A2A continuation via `SendMessage` | P0 | Continue an `input-required` task using its `taskId` and matching `contextId` |
@@ -77,7 +77,7 @@ The `SendMessage` handler may process a GET synchronously, but must still create
 ### Discovery and security
 
 - Publish a valid A2A v1 Agent Card at the well-known path, declaring `supportedInterfaces` with `protocolBinding: "HTTP+JSON"`, an accurately implemented protocol version, limited `skills`, `defaultInputModes`, `defaultOutputModes`, and **false/absent** unsupported optional capabilities.
-- Only advertise publicly discoverable capabilities. Restrict private business operation names and tenant-specific skills to suitably authenticated discovery mechanisms when supported.
+- Only advertise publicly discoverable capabilities. Restrict private business operation names and tenant-specific Agent Card `skills` entries to suitably authenticated discovery mechanisms when supported.
 - Local development should default to loopback. Public deployment requires HTTPS, authentication, rate limiting, allowed origins, caller-to-task authorization, and egress safeguards. An Agent Card is **not** evidence of caller permissions.
 - Never accept a caller-provided URL, HTTP method, credential, or backend operation name as authority. Limit upstream business execution to explicitly configured and allowed GET operations.
 - Do not forward raw A2A auth headers to TypeSafe/SystemOne or to upstream APIs. Model providers receive only the minimal necessary instruction and candidate descriptions under documented data-handling terms.

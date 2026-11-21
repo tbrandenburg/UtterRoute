@@ -7,14 +7,14 @@
 
 ## 1. Architecture and invariants
 
-UtterRoute is a **protocol-facing A2A capability resolver**, not a general HTTP API gateway. An inbound A2A request selects **one** registered, caller-authorized capability: either a permitted REST GET operation or an operator-approved existing A2A agent skill. The resolver dispatches through a thin target adapter, returns a task/artifact, or abstains/clarifies. A2A HTTP+JSON remains the first and only public business interface in v0.1; the proprietary `/v1/execute` design remains deferred.
+UtterRoute is a **protocol-facing A2A capability resolver**, not a general HTTP API gateway. An inbound A2A request selects **one** registered, caller-authorized capability: either a permitted REST GET operation or an operator-approved existing A2A agent capability. The resolver dispatches through a thin target adapter, returns a task/artifact, or abstains/clarifies. A2A HTTP+JSON remains the first and only public business interface in v0.1; the proprietary `/v1/execute` design remains deferred.
 
 **Hard invariants:**
 
 1. **Capability eligibility first.** Operator configuration and authenticated caller policy decide which capabilities can be considered. Model decisions, Agent Cards, request hints and prompts never grant permission.
 2. **One target per incoming task.** For a REST target: at most one allowlisted GET, validated origin and parameters. For an A2A target: at most one permitted outbound `SendMessage` initiating a child task, with bounded follow-up retrieval/clarification. Do not fan out or chain targets.
 3. **No compulsory inference.** Explicit authorized IDs and unambiguous configured rules resolve deterministically with zero Jev/SystemOne calls. If the request remains ambiguous and no optional semantic selector is enabled, abstain/clarify.
-4. **A2A agents are not inherently read-only.** Explicitly approve target agents and skills and their side-effect risk. Unknown-effect delegated skills are denied by default in the controlled v0.1 demo. The REST GET-only guarantee does not apply inside a remote agent.
+4. **A2A agents are not inherently read-only.** Explicitly approve target agents and registered capabilities and their side-effect risk. Unknown-effect remote-agent delegations are denied by default in the controlled v0.1 demo. The REST GET-only guarantee does not apply inside a remote agent.
 5. **No untrusted destinations.** Only configured, trusted REST origins and registered A2A agent URLs. Model output, OpenAPI `servers`, Agent Card metadata and the user's instruction cannot introduce targets.
 6. **Plan-only means no downstream target invocation:** `utterroute.mode=plan` may resolve a capability (including an optional inference call if configured) but must call **neither** the REST API **nor** the remote A2A agent.
 7. **Task isolation and replay resistance:** Caller identity scopes Task retrieval/continuation and downstream task ID correlation. Duplicates do not trigger another dispatch; bounded storage, deadlines and result size are required.
@@ -28,7 +28,7 @@ A2A client -> existing edge / API gateway (optional)
 A2A HTTP+JSON adapter, caller identity and owned tasks
        |
        v
-Capability catalog: approved REST operations + A2A skills
+Capability catalog: approved REST operations + A2A agents
        |
        v
 Policy filter -> explicit/direct rule -> optional Jev choice -> abstain
@@ -46,9 +46,9 @@ Resolver + minimal dispatch (one target per task)
 
 - **A2A ingress:** Uses the official A2A SDK for Agent Card, `SendMessage`, `GetTask`, Task and Artifact types. Never acts as a general reverse proxy.
 - **Task store:** Authenticated caller identity, TTL/size bounds, input-required continuation, terminal-task replay protection and mappings to approved downstream A2A task/context IDs.
-- **Capability catalog:** A normalized list of stable IDs, `rest_operation` or `a2a_agent_skill` kind, descriptions, trusted target references, caller eligibility and side-effect risk. No public arbitrary destination registration.
+- **Capability catalog:** A normalized list of stable IDs, `rest_operation` or `a2a_agent` kind, descriptions, trusted target references, caller eligibility and side-effect risk. No public arbitrary destination registration.
 - **REST importer:** Validates configured local OpenAPI and builds allowlisted GET operations with scalar parameter schemas.
-- **A2A agent registration:** Loads an **operator-approved** agent URL and skill ID; may read its Agent Card to validate declared protocol/skill, but treats it as untrusted descriptive data. Do not recursively discover agents.
+- **A2A agent registration:** Loads an **operator-approved** agent URL and local capability ID; may read its Agent Card to validate declared protocol compatibility, but treats it as untrusted descriptive data. Do not recursively discover agents.
 - **Resolver:** Filters capabilities by caller policy; chooses explicit/authoritatively configured deterministic match or abstains. A semantic `Router` adapter is an **optional extension** that may select only from that filtered set.
 - **REST target:** Validates scalar arguments, origin/method policy, assembles a bounded GET with configured credentials and returns the actual HTTP status/body metadata.
 - **A2A target:** Sends one A2A `SendMessage` to an approved agent, correlates child Task state/context, bounds retrieval/polling and maps result/clarification. It does not govern the remote agent's internal actions.
@@ -83,9 +83,11 @@ capabilities:
         type: bearer_env
         env: BILLING_DEMO_TOKEN
   a2a:
-    - id: research-agent
+    - id: research.competitor  # UtterRoute capability ID
+      kind: a2a_agent
+      target: research-agent  # operator-controlled downstream agent
+      description: Research a competitor
       agent_url: http://127.0.0.1:9001  # trusted local demo only
-      allowed_skill_ids: [research-summary]
       side_effect_policy: explicitly_approved
       auth:
         type: bearer_env
@@ -104,7 +106,7 @@ logging:
   include_response_body: false
 ```
 
-Config is a **design sketch, not an executable schema**. Remote A2A agents need explicit trusted hosts and skill approvals; a discovered Agent Card alone does not grant authorization. The local example's HTTP loopback is not a production pattern. Optional model keys and upstream credentials come from the environment/secret management, never incoming messages. Default to loopback; reuse existing ingress/API gateways for public TLS, WAF/DDoS and general rate limits. Public deployment is **not supported by the v0.1 demo** without independent application policy review and appropriate external controls.
+Config is a **design sketch, not an executable schema**. Remote A2A agents need explicit trusted hosts and capability approvals; a discovered Agent Card alone does not grant authorization. The local example's HTTP loopback is not a production pattern. Optional model keys and upstream credentials come from the environment/secret management, never incoming messages. Default to loopback; reuse existing ingress/API gateways for public TLS, WAF/DDoS and general rate limits. Public deployment is **not supported by the v0.1 demo** without independent application policy review and appropriate external controls.
 
 ## 4. OpenAPI ingestion contract
 
@@ -127,7 +129,7 @@ Canonical internal IDs use `connection_id:operationId`. Imported summaries/descr
 
 ### Registered downstream A2A agents (v0.1 subset)
 
-A downstream `a2a_agent_skill` is **not** an OpenAPI operation. Its registration includes an operator-approved agent origin, skill ID, authenticated caller eligibility, trusted credential reference and side-effect policy. Validate an Agent Card and supported binding against **local configuration**; it must not override allowlists, credentials or permitted origins. Send at most one new A2A request per incoming task, and track any returned child Task/context IDs for bounded retrieval or authorized input-required continuation. Declared remote agent skills may cause side effects; unknown-effect skills are **not automatically safe**.
+A downstream `a2a_agent` capability is **not** an OpenAPI operation or a remotely enforceable AgentSkill. It maps one local capability ID to an operator-approved agent origin, caller eligibility, credential reference and delegation risk policy. The A2A Agent Card's protocol-defined `skills` entries are **descriptive discovery metadata**; A2A `SendMessage` is addressed to an agent, not an individually enforceable AgentSkill. For v0.1 register one approved capability per remote agent target rather than promising per-`AgentSkill` confinement. Validate the Agent Card and supported binding against **local configuration**; it must not override allowlists, credentials or permitted origins. Send at most one new A2A request per incoming task, and track any returned child Task/context IDs for bounded retrieval or authorized input-required continuation. Remote agents may have side effects; unknown-effect delegation is **not automatically safe**.
 
 ## 5. Public A2A API (v0.1 proposed)
 
@@ -136,12 +138,12 @@ The **only business-facing v0.1 protocol is A2A v1 HTTP+JSON**, consistent with 
 ### `GET /.well-known/agent-card.json`
 
 Return a valid A2A Agent Card declaring:
-- `name`, `description`, `version`, supported input/output modes, and a truthful, bounded REST/A2A capability-resolver skill;
+- `name`, `description`, `version`, supported input/output modes, and truthful, bounded protocol-defined `skills` entries describing the resolver;
 - `supportedInterfaces` with `protocolBinding: "HTTP+JSON"`, the declared A2A protocol version and an externally configured absolute HTTPS URL in deployed environments;
 - an accurate authentication/security scheme; no secret connection names or upstream credentials;
 - optional capabilities such as `streaming`, `pushNotifications`, and `extendedAgentCard` set false/omitted until actually supported.
 
-Agent Card discovery does not grant access to tasks or upstream APIs. Skill names are stable business-level descriptions, not unlimited permission to choose arbitrary OpenAPI operations. For v0.1, one operator-configured connection per deployed agent is enough.
+Agent Card discovery does not grant access to tasks or upstream APIs. The protocol-defined Agent Card `skills` entries are descriptions, not authority to select arbitrary REST operations or constrain remote-agent behavior. For the v0.1 demo, one configured REST operation and one configured remote A2A agent target are enough.
 
 ### `POST /message:send` — A2A `SendMessage`
 
@@ -168,7 +170,7 @@ Authorization: Bearer <local-development-token>
 }
 ```
 
-An ordinary text request may dispatch **one registered, authorized capability** when selection is deterministic; the REST path remains GET-only and an A2A skill can have separately approved side effects. A documented optional `message.metadata["utterroute.capability_id"]` is an **untrusted selection hint**, not an A2A standard field and never an authorization grant. The optional UtterRoute-specific `message.metadata["utterroute.mode"] = "plan"` returns a preview with **zero downstream REST or A2A calls**. Model inference is not required unless separately configured for ambiguous requests.
+An ordinary text request may dispatch **one registered, authorized capability** when selection is deterministic; the REST path remains GET-only and an A2A agent capability can have separately approved side-effect risk. A documented optional `message.metadata["utterroute.capability_id"]` is an **untrusted selection hint**, not an A2A standard field and never an authorization grant. The optional UtterRoute-specific `message.metadata["utterroute.mode"] = "plan"` returns a preview with **zero downstream REST or A2A calls**. Model inference is not required unless separately configured for ambiguous requests.
 
 ### Task lifecycle and continuation
 
@@ -202,12 +204,12 @@ For an accepted task, represent expected application outcomes by Task state and/
 
 ## 6. Capability selection logic (deterministic first)
 
-1. Normalize the configured catalog into stable REST operation and A2A agent-skill capability IDs.
+1. Normalize the configured catalog into stable REST operation and registered A2A agent capability IDs.
 2. **Filter by caller eligibility and operator policy** before considering selection. Remote Agent Cards and incoming hints are untrusted.
 3. If the caller provides an explicit capability ID hint, validate it against the filtered catalog; if valid and arguments/side-effect policy pass, directly dispatch with **zero inference calls**.
 4. Otherwise apply only unambiguous, operator-configured deterministic rules. If no safe unique match exists, request clarification/refuse by default.
 5. **Optional later:** An explicitly configured Jev (or alternative) router receives only the eligible descriptions and an abstain candidate; it may choose **only** one supplied ID. Reject any hallucinated destination/unknown operation or low-confidence decision. Never silently switch local to hosted inference.
-6. Validate REST arguments and allowed GET method or A2A skill/side-effect approval again at dispatch time. Record a sanitized routing-path label: `explicit`, `deterministic`, `semantic` or `abstain`.
+6. Validate REST arguments and allowed GET method or registered A2A capability/delegation-risk approval again at dispatch time. Record a sanitized routing-path label: `explicit`, `deterministic`, `semantic` or `abstain`.
 
 The fast path is the product baseline. Jev is the **first planned optional semantic adapter**, not a required `SendMessage` dependency. If no model is configured, direct and deterministic resolution still operate. Semantic thresholds require labeled evaluations, not universal confidence assumptions.
 
@@ -301,8 +303,8 @@ For evaluation, create a labeled fixture set with expected operation, expected a
 - A2A Agent Card can be discovered and parsed; `SendMessage` returns a Task; `GetTask` retrieves only authorized tasks.
 - A2A plan-only metadata produces a completed plan artifact and zero business calls.
 - An explicit, authorized REST capability request executes at most one valid GET per Task and returns an artifact, with **zero** inference calls.
-- An explicit, approved A2A research skill causes one outbound `SendMessage`, correlates child task/context and returns a mapped artifact or bounded working/input-required task.
-- Unauthorized/unapproved remote agent skills and unknown-effect risks cause **zero** outbound messages; duplicate/replayed tasks cause no additional delegation.
+- An explicit, approved A2A research capability causes one outbound `SendMessage`, correlates child task/context and returns a mapped artifact or bounded working/input-required task.
+- Unauthorized/unapproved remote A2A capabilities and unknown-effect risks cause **zero** outbound messages; duplicate/replayed tasks cause no additional delegation.
 - Ambiguous requests without a configured semantic router abstain rather than forcing Jev.
 - Input-required tasks can be continued; terminal tasks cannot be resumed or re-executed.
 - Unauthorized task retrieval and missing/expired task references reveal no confidential data.
@@ -315,7 +317,7 @@ For evaluation, create a labeled fixture set with expected operation, expected a
 **Release checklist:**
 
 - [ ] Docker-based sample functions from a fresh clone with documented dependencies
-- [ ] Local OpenAPI 3.x importer and GET allowlist **plus** one trusted remote A2A agent-skill registration
+- [ ] Local OpenAPI 3.x importer and GET allowlist **plus** one trusted remote A2A agent capability registration
 - [ ] Explicit/deterministic resolution works with no Jev/SystemOne key; optional inference remains a separately evaluated extension
 - [ ] A2A HTTP+JSON Agent Card, `SendMessage`, `GetTask`, task state and artifact contracts pass independent client tests
 - [ ] Plan-only task and read-only execution through the same internal service; custom HTTP adapter deferred
@@ -335,7 +337,7 @@ cmd/utterroute/main.go
 internal/
   a2a/           # inbound protocol and owned Task correlation
   resolver/      # caller-eligible, deterministic-first selection
-  catalog/       # REST operations + approved remote A2A skills
+  catalog/       # REST operations + approved remote A2A capabilities
   targets/       # rest.go and a2a.go outbound adapters
   config/        # trusted target/credential/policy references
 examples/{billing-api,research-agent}/
