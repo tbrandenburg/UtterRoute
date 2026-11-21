@@ -1,7 +1,9 @@
 # UtterRoute — Two-target validation spike
 
 **Status:** Proposed, documentation only; no Go implementation has shipped.  
-**Decision basis:** [PRD](PRD.md) · [ADR-001: A2A-first](ADR-001-A2A-FIRST.md) · [ADR-002: Go](ADR-002-GO-V0.1.md) · [ADR-003: Capability resolver](ADR-003-CAPABILITY-RESOLVER.md)
+**Steering docs:** [PRD](PRD.md) (product scope and journeys) · [ARCH](ARCH.md) (technical contract) · [AGENTS](../AGENTS.md) (implementation instructions). This PLAN is the **one active S0–S4 execution checklist**; update it as slices are implemented, not the PRD.
+
+**Decision basis:** [PRD](PRD.md) · [ADR-001: A2A-first](adr/ADR-001-A2A-FIRST.md) · [ADR-002: Go](adr/ADR-002-GO-V0.1.md) · [ADR-003: Capability resolver](adr/ADR-003-CAPABILITY-RESOLVER.md)
 
 ## Question to answer
 
