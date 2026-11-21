@@ -92,7 +92,7 @@ Its [documented wire subset](https://github.com/codesoda/systemone/blob/main/com
 - Register one local OpenAPI **GET** operation and one **approved A2A agent capability**, each with a stable capability ID and trusted target reference.
 - Apply caller eligibility **before** selection; use explicit/deterministic resolution by default, with zero inference calls on that path.
 - Dispatch **one** approved target per task: validated REST GET **or** remote A2A `SendMessage`, preserving child Task/context and bounded continuation.
-- Treat remote agent capabilities as potentially side-effecting and deny unapproved/unknown-risk skills by default.
+- Treat remote agent capabilities as potentially side-effecting and deny unapproved/unknown-risk agent capabilities by default.
 - Abstain or request clarification when no unambiguous authorized capability exists; plan-only metadata sends **zero** calls to either kind of target.
 - Preserve minimal local trust, workload bounds and outbound safety; rely on existing API gateways/ingress for commodity network protections.
 - Measure direct vs deterministic dispatch overhead, correctness and the developer experience. Add **optional** semantic inference only if it demonstrates value.
