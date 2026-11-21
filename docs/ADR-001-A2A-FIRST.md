@@ -4,6 +4,8 @@
 **Date:** 2026-11-21  
 **Related:** [PRD](PRD.md) · [Technical specification](SPEC.md) · [Future native HTTP API](HTTP_API_FUTURE.md)
 
+> **Scope update (ADR-003):** [Capability resolver, not API gateway](ADR-003-CAPABILITY-RESOLVER.md) refines the target model to include **both REST GET operations and existing A2A agent skills**, with deterministic-first resolution and optional inference. This ADR continues to define the primary **inbound A2A protocol** and task lifecycle. Historical references here to one REST connection/GET reflect the original narrower proposal; they are **superseded on target scope and mandatory inference** by ADR-003.
+
 ## Context
 
 UtterRoute converts a natural-language instruction into a safe API operation over an existing OpenAPI-described REST service. Our original v0.1 design started from the custom `POST /v1/execute` endpoint and deferred agent interoperability. The intended early adopters, however, are agents and frameworks that need to *discover* and *invoke* business capabilities without learning an ad hoc protocol.
