@@ -207,13 +207,17 @@ These are **hypotheses, not measured results**. The deterministic p95 goal is an
 
 ## 8. Milestones (A2A first, resolver scope)
 
-1. **A2A shell:** Pin Go + A2A SDK; Agent Card, SendMessage, GetTask, auth-aware bounded tasks, independent-client smoke test.
-2. **Capability catalog:** Register one trusted REST GET and one approved remote A2A capability, with stable IDs, policy and deterministic selection.
-3. **Two thin target adapters:** REST GET and outbound A2A SendMessage; child-task mapping, deadlines, refusal and replay tests.
-4. **Measure the wedge:** Compare direct invocations vs deterministic path latency, correctness, setup friction and A2A interoperability; document whether a standalone service is justified.
-5. **Optional semantic experiment:** Add a Jev adapter only after the baseline works; measure held-out improvement before promoting it to a required release feature.
+**The execution checklist and stop/go criteria live in [Two-target validation spike](SPIKE_PLAN.md).** The spike is deliberately narrower than the full proposed v0.1 release: it validates two registered targets, a zero-inference deterministic resolver, essential trust boundaries and real benchmark evidence before adding optional model routing.
 
-Do **not** implement a generic HTTP gateway or proprietary `/v1/execute` API as a release prerequisite.
+**Implement in this order, as small reviewable PRs:**
+
+1. **S0 — A2A protocol shell and independent fixtures:** Pin Go/official A2A SDK; authenticated Agent Card, SendMessage, GetTask, bounded tasks; standalone billing API, standalone research agent and independent client.
+2. **S1 — Deterministic REST path:** One allowlisted OpenAPI GET capability; validate hints/arguments; one bounded GET with zero inference calls.
+3. **S2 — Bounded A2A path:** One approved remote agent capability; one initial SendMessage, caller-to-child Task correlation; direct Message/completed Task and a constrained clarification scenario.
+4. **S3 — Refusal and safety:** Denied/ambiguous/plan-only requests dispatch zero calls; caller isolation, duplicate-request/uncertain-delivery handling, limits and fixed egress fail closed.
+5. **S4 — Product validation and decision:** Benchmark direct REST/A2A target invocation versus UtterRoute; measure p50/p95, routing correctness/abstention, setup effort and evidence for **continue / library / stop**.
+
+**Only if S4 justifies it:** a separate optional Jev/Semantic selection evaluation for ambiguous cases (one capability ID or abstain, never a sequence). No hosted model key is needed for the spike. Do **not** build a generic API gateway, general orchestration system or proprietary `/v1/execute` as a prerequisite.
 
 ## 9. Risks and mitigations
 
@@ -242,5 +246,7 @@ Do **not** implement a generic HTTP gateway or proprietary `/v1/execute` API as 
 - Which OpenAPI schema features and remote references are supported in the first importer.
 - Default routing-confidence policy; must be calibrated from fixtures rather than treated as a probability of business success.
 - Which authenticated local development policy and token mechanism to use by default for A2A task isolation.
+
+**Spike exit gate:** The [two-target spike](SPIKE_PLAN.md) must publish reproducible direct-vs-UtterRoute measurements and a go/narrow/stop recommendation. This is an experiment outcome, **not** a claim that adoption or subsecond latency has been proven.
 
 **Definition of done:** An independent A2A client discovers and invokes **one registered REST GET** and **one approved existing A2A agent**, receives caller-owned Tasks/artifacts, observes an input-required continuation and correct abstention; **explicit routing makes zero model calls**, disallowed requests make zero downstream calls, and no custom HTTP/API-management system is required. Benchmarks compare direct vs resolved dispatch.
