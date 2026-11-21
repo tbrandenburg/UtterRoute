@@ -83,12 +83,86 @@ An A2A client can invoke a known agent, and a conventional client can invoke a k
 ### First run: resolve to a REST operation or an A2A agent
 
 1. Operator configures two approved capabilities: an OpenAPI-described billing GET and a separately running A2A research agent with an explicitly approved capability.
-2. UtterRoute exposes a bounded A2A Agent Card/HTTP+JSON interface; callers authenticate and receive an eligible capability set.
+2. UtterRoute exposes a bounded A2A Agent Card/HTTP+JSON interface; only safe public discovery metadata is advertised, and caller eligibility is checked at invocation.
 3. A client sends an A2A `SendMessage` naming an approved capability or matching a configured deterministic rule. **No model call is needed.**
 4. UtterRoute dispatches to **one** target, returns a Task artifact and supports authorized `GetTask`.
 5. For a REST operation, it validates arguments and sends at most one GET; for a remote A2A agent, it sends at most one downstream `SendMessage` and maps the child task/context as needed.
 
 When no deterministic match exists, UtterRoute clarifies/refuses by default. A later **optional Jev adapter** may select among eligible candidates after comparative tests demonstrate value. No TypeSafe key is needed for the v0.1 baseline.
+
+### User journeys and acceptance scenarios
+
+The journeys below describe **UtterRoute-owned responsibilities** and the boundary with existing APIs, A2A agents and infrastructure. They use **Capability**, **Target** and **Resolver** as product terms; `AgentSkill` and Agent Card `skills` remain A2A protocol fields, **not** per-capability authorization controls. The first two invocation journeys and a bounded A2A delegation are the v0.1 validation baseline; semantic selection is a separately evaluated extension.
+
+#### Journey 1 — Platform engineer registers existing capabilities (P0)
+
+**As a** platform engineer, **I want** an existing REST API and an independently deployed A2A agent to appear as approved capabilities **so that** a calling agent can use them without changing either target.
+
+1. Configure the local OpenAPI billing service with fixed origin and an allowlisted GET `billing.list_invoices`.
+2. Configure a trusted research-agent target with a locally named `research.competitor` capability, approved caller policy and explicit delegation/side-effect risk.
+3. Validate both target configurations at startup. The A2A Agent Card is **descriptive discovery metadata**, not proof of trust or an enforcement mechanism for individual `AgentSkill` entries.
+4. Expose a truthful UtterRoute Agent Card without advertising private caller-specific capabilities publicly. Apply caller eligibility independently at invocation.
+
+**Acceptance:** A configured capability resolves to its trusted target; malformed REST schemas, disallowed methods, untrusted agent destinations and unknown-effect delegations fail closed. Neither underlying service is redeployed or modified.
+
+#### Journey 2 — Finance assistant uses a known REST capability (P0 fast path)
+
+**As a** finance agent, **I want** to list unpaid invoices **so that** I can consume a safe REST result through A2A without paying inference latency for a known route.
+
+1. The agent sends A2A `SendMessage` with an authorized explicit capability hint (`utterroute.capability_id=billing.list_invoices`) or an unambiguous configured deterministic match.
+2. UtterRoute authenticates the caller, checks capability eligibility and required arguments, and chooses `billing.list_invoices` **without Jev/SystemOne**.
+3. The REST target adapter executes **at most one validated GET** to the configured origin; UtterRoute returns a caller-owned Task with a bounded artifact and the actual upstream status.
+4. The agent retrieves the Task with `GetTask` if needed. An input-required clarification can supply a missing argument without causing a second GET.
+
+**Acceptance:** Explicit/deterministic dispatch causes **zero inference calls** and no unauthorized URL, method or credential forwarding. “Cancel invoice” must not be reinterpreted as a harmless read just because the text contains “invoice”. Plan mode and invalid/ambiguous arguments trigger **zero target calls**. Benchmark incremental p50/p95 against direct REST invocation.
+
+#### Journey 3 — Support agent submits ambiguous intent (baseline abstention; optional semantic extension)
+
+**As a** support agent, **I want** to ask “Why hasn't this customer paid?” **so that** UtterRoute can choose the right approved capability *only when there is enough evidence*.
+
+1. UtterRoute filters the catalog by the caller's policy **before** attempting selection.
+2. If no unique deterministic match exists, v0.1 asks for clarification or refuses; it **does not** call Jev merely because the request arrived.
+3. In a later opt-in semantic experiment, Jev/SystemOne can select **one** candidate from the eligible catalog or abstain. The resolver validates the returned capability ID and policy before dispatch.
+4. Missing customer identifiers, conflicting matches, model outages and low-confidence/invalid selections lead to clarification/refusal, not guessed execution.
+
+**Acceptance:** With semantic routing disabled, the ambiguous request causes **zero model calls and zero downstream calls**. If enabled later, only eligible candidates reach the model, a model-produced URL is never trusted, and correctness/abstention/latency/cost are measured against the deterministic baseline.
+
+#### Journey 4 — Strategy agent delegates to a trusted A2A agent (P0 bounded delegation)
+
+**As a** strategy agent, **I want** to request competitor research **so that** an existing specialist agent performs its own work while UtterRoute provides A2A interoperability and caller-scoped task visibility.
+
+1. The caller explicitly selects the authorized local `research.competitor` capability; UtterRoute resolves the approved **agent target**, not an individually enforceable remote `AgentSkill`.
+2. UtterRoute sends **one initial outbound A2A `SendMessage`** to the configured research agent. The remote agent decides its own internal steps; UtterRoute does not pick downstream sequences.
+3. The remote agent may return a direct `Message`, a completed Task, or a bounded `WORKING`/`INPUT_REQUIRED` Task. UtterRoute maps that result to its own caller-owned Task and correlates child task/context identifiers where present.
+4. If clarification is required, an authenticated caller can continue the **same** child task within supported limits. Remote task retrieval/polling is bounded and **not** triggered for every caller `GetTask` poll.
+5. A timeout after submission has **uncertain delivery**: do not blindly retry the initial delegation or claim guaranteed exactly-once execution.
+
+**Acceptance:** One accepted parent Task initiates **no more than one new remote delegation** (continuation of an existing child is distinct). Unauthorized callers cannot read or resume either task; an unapproved/unknown-risk agent target gets **zero calls**. Support a direct Message and completed Task in the first demo, plus a controlled input-required continuation. Full durable asynchronous processing, arbitrary remote authorization and restart recovery remain out of scope.
+
+#### Journey 5 — Caller requests a multi-target workflow (P0 refusal boundary)
+
+**As a** calling agent, **I want** to “Research Acme, then update the CRM” **so that** I understand whether UtterRoute can fulfill my request or whether I need an orchestrator.
+
+1. The resolver checks whether a **single approved capability** can truthfully handle the whole intent.
+2. If none can, UtterRoute declines to execute the composite request or asks the caller to narrow it.
+3. The **calling orchestrator**, not UtterRoute or Jev, decides whether and when to send separate requests for research and CRM changes.
+
+**Acceptance:** UtterRoute generates **no executable multistep plan**, no second capability selection based on intermediate results, no cross-target data passing and no unapproved REST writes. A downstream A2A agent may have its own internal workflow, but those actions remain outside UtterRoute's orchestration and authorization guarantees.
+
+#### Cross-journey release guardrails
+
+| Failure case | Expected outcome |
+| --- | --- |
+| Caller supplies an unauthorized capability ID or tries to read another caller's task | Deny without exposing private catalog/task data; **zero downstream calls** |
+| Duplicate `SendMessage` or concurrent continuation | No second REST execution or second initial A2A delegation; safeguard replay/races |
+| Agent Card changes its advertised metadata or redirects to another origin | Do not expand permissions or change trusted destinations automatically |
+| Model returns an unknown capability or several deterministic matches remain | Abstain/clarify rather than choosing the first |
+| REST response or A2A artifact is oversized | Enforce bounded body/artifact storage; fail with sanitized result |
+| Remote A2A request times out after possible acceptance | Record an uncertain outcome; do not automatically replay remote work |
+| Remote agent requests out-of-band authorization | Report unsupported/authorization-required handling; no credential-broker workflow in v0.1 |
+| Downstream calls UtterRoute again, or client polls excessively | Enforce configured delegation/loop limits, task TTL and bounded polling; no recursive unbounded work |
+
+**Scope rule:** One **selected capability** per incoming task: either one allowed REST GET or one initial approved A2A delegation. Multiple protocol messages for *the same* child task do **not** make UtterRoute a workflow orchestrator. Jev's only permitted decision, if enabled, is **one eligible capability ID or abstention**, never a sequence of calls.
 
 ### Task and failure behavior
 
